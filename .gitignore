@@ -52,3 +52,6 @@ RelWithDebInfo
 Release
 BrowseInfo
 .cmake_build
+
+.alif
+.west

@@ -1,12 +1,17 @@
 manifest:
+  
+  defaults:
+    remote: alif
+
   remotes:
-    - name: zephyrproject-rtos
-      url-base: https://github.com/zephyrproject-rtos
+    - name: alif
+      url-base: gitAlif:alifsemi
+  
   projects:
     - name: zephyr
-      remote: zephyrproject-rtos
+      repo-path: zephyr_alif
       revision: main
-      path: zephyr
       import: true
+
   self:
     path: .
