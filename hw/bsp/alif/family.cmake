@@ -14,6 +14,9 @@ if (NOT board_cmake_included)
   message(FATAL_ERROR "Board CMake not found for BOARD=${BOARD}")
 endif()
 
+# add system files
+set(HAL_DIR ${TOP}/modules/hal/alif/)
+
 
 function(family_configure_example TARGET RTOS)
 
@@ -24,6 +27,7 @@ message(STATUS ">>> TARGET                           = ${TARGET}")
 message(STATUS ">>> BOARD                            = ${BOARD}")
 message(STATUS ">>> TOP                              = ${TOP}")
 message(STATUS ">>> Selected MCU_VARIANT             = ${MCU_VARIANT}")
+message(STATUS ">>> Selected HAL_DIR                 = ${HAL_DIR}")
 
 # Board target
   if (NOT RTOS STREQUAL zephyr)
@@ -39,7 +43,11 @@ message(STATUS ">>> Selected MCU_VARIANT             = ${MCU_VARIANT}")
     # BSP
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/family.c
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../board.c
+    # HAL
+    ${HAL_DIR}/common/src/system.c
+
     )
+    
   target_include_directories(${TARGET} PUBLIC
     # family, hw, board
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}
@@ -50,17 +58,11 @@ message(STATUS ">>> Selected MCU_VARIANT             = ${MCU_VARIANT}")
     target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD_ALIAS})
   endif ()
 
-  # # Add TinyUSB target and port source
-  # family_add_tinyusb(${TARGET} OPT_MCU_ENSEMBLE_HP)
-  # target_sources(${TARGET} PRIVATE
-  #   ${TOP}/src/portable/alif/alif_e7_dk_rtss_hp/dcd_ensemble.c
-  #   )
-
 # Map MCU_VARIANT to compile definitions and TinyUSB option                   #
 if (MCU_VARIANT STREQUAL "ENSEMBLE7_HE")
   message(STATUS "Building for CORE_M55_HE")
   add_compile_definitions(CORE_M55_HE)
-  family_add_tinyusb(${TARGET} OPT_MCU_ENSEMBLE_HE)
+  family_add_tinyusb(${TARGET} OPT_MCU_ALIF_E7_HE)
   target_sources(${TARGET} PRIVATE
     # ${TOP}/src/portable/alif/alif_e7_dk_rtss_he/dcd_ensemble.c
     )
@@ -70,15 +72,13 @@ if (MCU_VARIANT STREQUAL "ENSEMBLE7_HE")
     add_compile_definitions(CORE_M55_HP)
 
     # Add TinyUSB target and port source
-    family_add_tinyusb(${TARGET} OPT_MCU_ENSEMBLE_HP)
+    family_add_tinyusb(${TARGET} OPT_MCU_ALIF_E7_HP)
     target_sources(${TARGET} PRIVATE
       ${TOP}/src/portable/alif/alif_e7_dk_rtss_hp/dcd_ensemble.c
       )
 else()
   message(FATAL_ERROR "Unsupported MCU_VARIANT='${MCU_VARIANT}'.")
 endif()
-
-    
 
   # Flashing
 #  family_add_bin_hex(${TARGET})

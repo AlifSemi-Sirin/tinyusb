@@ -200,7 +200,8 @@
 #define OPT_MCU_MAX78002         2403  ///< ADI MAX78002
 
 // Alif Semiconductor
-#define OPT_MCU_ALIF_E7          2500  ///< Alif Semiconductor E7 Series
+#define OPT_MCU_ALIF_E7_HP       2500  ///< Alif Semiconductor E7 Series HP Core
+#define OPT_MCU_ALIF_E7_HE       2501  ///< Alif Semiconductor E7 Series HE Core
 
 
 // Check if configured MCU is one of listed

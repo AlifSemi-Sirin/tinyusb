@@ -13,10 +13,10 @@
  #if CFG_TUD_ENABLED
  
  #if defined(CORE_M55_HE)
- #include "M55_HE.h"
+//  #include "M55_HE.h"
  
  #elif defined(CORE_M55_HP)
- #include "M55_HP.h"
+//  #include "M55_HP.h"
  #else
  #error "Unsupported core!"
  #endif
@@ -25,8 +25,8 @@
  
  #include "alif_dcd_reg.h"
  
- #include "clk.h"
- #include "power.h"
+//  #include "clk.h"
+//  #include "power.h"
  
  #define TUSB_ALIF_DEBUG
  #define TUSB_ALIF_DEBUG_DEPTH (2048)
@@ -75,8 +75,11 @@
  
  // Initializes the USB peripheral for device mode and enables it.
  // This function should enable internal D+/D- pull-up for enumeration.
- void dcd_init(uint8_t rhport)
+ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) 
  {
+return true;    
+
+/*     
      // enable 20mhz clock
      enable_cgu_clk20m();
      // enable usb peripheral clock
@@ -86,6 +89,7 @@
      // disable usb phy isolation
      disable_usb_phy_isolation();
      // clear usb phy power-on-reset signal
+
      CLKCTL_PER_MST->USB_CTRL2 &= ~(1 << 8);
  
      // force stop/disconnect
@@ -175,6 +179,7 @@
      NVIC_SetPriority(USB_IRQ_IRQn, 5);
  #endif
      dcd_int_enable(rhport);
+*/
  }
  
  
@@ -182,8 +187,9 @@
  // from host... It will be called by application in the MCU USB interrupt handler.
  void dcd_int_handler(uint8_t rhport)
  {
-     LOG("%010u IRQ enter, evntcount %u", DWT->CYCCNT, ugbl->gevntcount0_b.evntcount);
- 
+     TU_LOG2("%010u IRQ enter, evntcount %u", DWT->CYCCNT, ugbl->gevntcount0_b.evntcount);
+
+/*    
      // process failures first
      if (ugbl->gsts_b.device_ip) {
          if (ugbl->gsts_b.csrtimeout || ugbl->gsts_b.buserraddrvld) {
@@ -222,6 +228,7 @@
      }
  
      LOG("%010u IRQ exit, evntcount %u", DWT->CYCCNT, ugbl->gevntcount0_b.evntcount);
+*/     
  }
  
  
@@ -230,9 +237,10 @@
  // shared between main code and the interrupt handler.
  void dcd_int_enable (uint8_t rhport)
  {
+/*    
      NVIC_EnableIRQ(USB_IRQ_IRQn);
- 
-     (void) rhport;
+      (void) rhport;
+*/     
  }
  
  // Disables the USB device interrupt.
@@ -240,9 +248,10 @@
  // shared between main code and the interrupt handler.
  void dcd_int_disable(uint8_t rhport)
  {
+/*    
      NVIC_DisableIRQ(USB_IRQ_IRQn);
- 
-     (void) rhport;
+      (void) rhport;
+*/     
  }
  
  // Receive Set Address request, mcu port must also include status IN response.
@@ -250,16 +259,18 @@
  // leave this empty and also no queue an event for the corresponding SETUP packet.
  void dcd_set_address(uint8_t rhport, uint8_t dev_addr)
  {
-     LOG("%010u >%s", DWT->CYCCNT, __func__);
+/*    
+     TU_LOG2("%010u >%s", DWT->CYCCNT, __func__);
  
      udev->dcfg_b.devaddr = dev_addr;
      dcd_edpt_xfer(rhport, tu_edpt_addr(0, TUSB_DIR_IN), NULL, 0);
+*/     
  }
  
  // Called to remote wake up host when suspended (e.g hid keyboard)
  void dcd_remote_wakeup(uint8_t rhport)
  {
-     LOG("%010u >%s", DWT->CYCCNT, __func__);
+    TU_LOG2("%010u >%s", DWT->CYCCNT, __func__);
  }
  
  // Connect by enabling internal pull-up resistor on D+/D-
@@ -283,7 +294,7 @@
  // Enable/Disable Start-of-frame interrupt. Default is disabled
  void dcd_sof_enable(uint8_t rhport, bool en)
  {
-     LOG("%010u >%s", DWT->CYCCNT, __func__);
+    TU_LOG2("%010u >%s", DWT->CYCCNT, __func__);
  }
  
  
@@ -293,7 +304,7 @@
  // May help DCD to prepare for next control transfer, this API is optional.
  void dcd_edpt0_status_complete(uint8_t rhport, tusb_control_request_t const * request)
  {
-     LOG("%010u >%s", DWT->CYCCNT, __func__);
+    TU_LOG2("%010u >%s", DWT->CYCCNT, __func__);
  
      _ctrl_long_data = false;
      _dcd_start_xfer(TUSB_DIR_OUT, _ctrl_buf, 8, TRBCTL_CTL_SETUP);
@@ -308,7 +319,7 @@
  // Also make sure to enable endpoint specific interrupts.
  bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
  {
-     LOG("%010u >%s %u %s %u %u", DWT->CYCCNT, __func__, desc_ep->bEndpointAddress,
+    TU_LOG2("%010u >%s %u %s %u %u", DWT->CYCCNT, __func__, desc_ep->bEndpointAddress,
          desc_ep->bmAttributes.xfer == TUSB_XFER_BULK ? "bulk" : "int",
          desc_ep->wMaxPacketSize, desc_ep->bInterval);
  
@@ -349,7 +360,7 @@
  // required for multiple configuration support.
  void dcd_edpt_close_all(uint8_t rhport)
  {
-     LOG("%010u >%s", DWT->CYCCNT, __func__);
+    TU_LOG2("%010u >%s", DWT->CYCCNT, __func__);
  }
  
  // Close an endpoint. his function is used for implementing alternate settings.
@@ -364,8 +375,11 @@
  // notify the stack
  bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t total_bytes)
  {
+ 
+return true;    
+/*
      // DEPSTRTXFER command
-     LOG("%010u >%s %u %x %u", DWT->CYCCNT, __func__, ep_addr, (uint32_t) buffer, total_bytes);
+     TU_LOG2("%010u >%s %u %x %u", DWT->CYCCNT, __func__, ep_addr, (uint32_t) buffer, total_bytes);
  
      uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
  
@@ -379,8 +393,8 @@
                  // TinyUSB explicitly requests STATUS OUT fetch after DATA IN
                  if (2 == ++_sts_stage) {
                      _sts_stage = 0;
-                     dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_OUT),
-                                             0, XFER_RESULT_SUCCESS, true);
+                    //  dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_OUT),
+                    //                          0, XFER_RESULT_SUCCESS, true);
                  }
              }
          } break;
@@ -400,8 +414,8 @@
  
                  if (2 == ++_sts_stage) {
                      _sts_stage = 0;
-                     dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_IN),
-                                             0, XFER_RESULT_SUCCESS, true);
+                    //  dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_IN),
+                    //                          0, XFER_RESULT_SUCCESS, true);
                  }
                  // dcd_event_xfer_complete(rhport, tu_edpt_addr(0, TUSB_DIR_IN),
                  //                         0, XFER_RESULT_SUCCESS, false);
@@ -417,11 +431,12 @@
              }
              uint8_t ret = _dcd_start_xfer(ep, buffer, total_bytes,
                              total_bytes ? TRBCTL_NORMAL : TRBCTL_NORMAL_ZLP);
-             LOG("start xfer sts %u", ret);
+             TU_LOG2("start xfer sts %u", ret);
          }
      }
  
      return true;
+*/     
  }
  
  // Submit a transfer using fifo, When complete dcd_event_xfer_complete() is invoked to notify the stack
@@ -432,7 +447,7 @@
  void dcd_edpt_stall(uint8_t rhport, uint8_t ep_addr)
  {
      // DEPSSTALL command
-     LOG(">%s", __func__);
+     TU_LOG2(">%s", __func__);
  
      uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
  
@@ -450,7 +465,7 @@
  void dcd_edpt_clear_stall(uint8_t rhport, uint8_t ep_addr)
  {
      // DEPCSTALL command
-     LOG(">%s", __func__);
+     TU_LOG2(">%s", __func__);
  
      uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
  
@@ -459,15 +474,17 @@
  
  void dcd_uninit(void)
  {
+/*    
      CLKCTL_PER_MST->USB_CTRL2 |= 1 << 8; // set usb phy power-on-reset signal
      enable_usb_phy_isolation(); // enable usb phy isolation
      disable_usb_phy_power(); // power down usb phy
      disable_usb_periph_clk(); // disable usb peripheral clock
+*/     
  }
  
  void USB_IRQHandler(void)
  {
-     dcd_int_handler(TUD_OPT_RHPORT);
+    //  dcd_int_handler(TUD_OPT_RHPORT);
  }
  
  
@@ -496,8 +513,8 @@
  
  static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par)
  {
-     LOG("%010u DEPEVT ep%u evt%u sts%u par%u", DWT->CYCCNT, ep, evt, sts, par);
- 
+    TU_LOG2("%010u DEPEVT ep%u evt%u sts%u par%u", DWT->CYCCNT, ep, evt, sts, par);
+/* 
      switch (evt) {
          case DEPEVT_XFERCOMPLETE: {
              LOG("Transfer complete");
@@ -510,18 +527,18 @@
                      LOG("%02x %02x %02x %02x %02x %02x %02x %02x",
                          _ctrl_buf[0], _ctrl_buf[1], _ctrl_buf[2], _ctrl_buf[3],
                          _ctrl_buf[4], _ctrl_buf[5], _ctrl_buf[6], _ctrl_buf[7]);
-                     dcd_event_setup_received(TUD_OPT_RHPORT, _ctrl_buf, true);
+                    //  dcd_event_setup_received(TUD_OPT_RHPORT, _ctrl_buf, true);
                  } else if (TRBCTL_CTL_STAT3 == trbctl) {
                      if (0 < _xfer_bytes[0]) {
                          RTSS_InvalidateDCache_by_Addr((void*) _xfer_trb[0][0], _xfer_bytes[0]);
-                         dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_OUT),
-                                                 _xfer_bytes[0] - (_xfer_trb[0][2] & 0xFFFFFF),
-                                                 XFER_RESULT_SUCCESS, true);
+                        //  dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_OUT),
+                        //                          _xfer_bytes[0] - (_xfer_trb[0][2] & 0xFFFFFF),
+                        //                          XFER_RESULT_SUCCESS, true);
                      } else {
                          if (2 == ++_sts_stage) {
                              _sts_stage = 0;
-                             dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_OUT),
-                                                     0, XFER_RESULT_SUCCESS, true);
+                            //  dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_OUT),
+                            //                          0, XFER_RESULT_SUCCESS, true);
  
                              // *(volatile uint32_t*) 0x4900C000 ^= 8; // [TEMP]
                          }
@@ -532,51 +549,53 @@
                  }
              } else if (1 == ep) {
                  uint8_t trbctl = (_xfer_trb[1][3] >> 4) & 0x3F;
-                 LOG("ep1 xfer trb3 = %08x trb2 = %08x", _xfer_trb[1][3], _xfer_trb[1][2]);
+                 TU_LOG2("ep1 xfer trb3 = %08x trb2 = %08x", _xfer_trb[1][3], _xfer_trb[1][2]);
                  if (TRBCTL_CTL_STAT2 != trbctl) { // STATUS IN notification is done at xfer request
-                     dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_IN),
-                                             _xfer_bytes[1] - (_xfer_trb[1][2] & 0xFFFFFF),
-                                             XFER_RESULT_SUCCESS, true);
+                    //  dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_IN),
+                    //                          _xfer_bytes[1] - (_xfer_trb[1][2] & 0xFFFFFF),
+                    //                          XFER_RESULT_SUCCESS, true);
                  } else {
                      if (2 == ++_sts_stage) {
                          _sts_stage = 0;
-                         dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_IN),
-                                                 0, XFER_RESULT_SUCCESS, true);
+                        //  dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_IN),
+                        //                          0, XFER_RESULT_SUCCESS, true);
  
                          // *(volatile uint32_t*) 0x4900C000 ^= 8; // [TEMP]
                      }
                  }
              } else {
                  // [TODO] check if ep is open
-                 LOG("ep%u xfer trb3 = %08x trb2 = %08x", ep, _xfer_trb[ep][3], _xfer_trb[ep][2]);
+                 TU_LOG2("ep%u xfer trb3 = %08x trb2 = %08x", ep, _xfer_trb[ep][3], _xfer_trb[ep][2]);
+                 
                  if (TUSB_DIR_OUT == tu_edpt_dir(tu_edpt_addr(ep >> 1, ep & 1))) {
                      RTSS_InvalidateDCache_by_Addr((void*) _xfer_trb[ep][0],
                                                    512 - _xfer_trb[ep][2]);
                                                  //   _xfer_bytes[ep] - _xfer_trb[ep][2]);
-                 dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep >> 1, ep & 1),
-                                         512 - _xfer_trb[ep][2],
-                                         XFER_RESULT_SUCCESS, true);
+                //  dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep >> 1, ep & 1),
+                //                          512 - _xfer_trb[ep][2],
+                //                          XFER_RESULT_SUCCESS, true);
                  } else
-                 dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep >> 1, ep & 1),
-                                         _xfer_bytes[ep] - _xfer_trb[ep][2],
-                                         XFER_RESULT_SUCCESS, true);
+                //  dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep >> 1, ep & 1),
+                //                          _xfer_bytes[ep] - _xfer_trb[ep][2],
+                //                          XFER_RESULT_SUCCESS, true);
+
              }
          } break;
          case DEPEVT_XFERINPROGRESS: {
-             LOG("Transfer in progress");
+            TU_LOG2("Transfer in progress");
          } break;
          case DEPEVT_XFERNOTREADY: {
-             LOG("Transfer not ready: %s", sts & 8 ? "no TRB" : "no XFER");
+            TU_LOG2("Transfer not ready: %s", sts & 8 ? "no TRB" : "no XFER");
  
              // XferNotReady NotActive for status stage
              if ((1 == ep) && (0b0010 == (sts & 0b1011))) {
-                 _dcd_start_xfer(1, NULL, 0, TRBCTL_CTL_STAT2);
+                //  _dcd_start_xfer(1, NULL, 0, TRBCTL_CTL_STAT2);
                  break;
              }
  
              if ((0 == ep) && (0b0010 == (sts & 0b1011))) {
                  _xfer_bytes[0] = 0;
-                 _dcd_start_xfer(0, _ctrl_buf, 64, TRBCTL_CTL_STAT3);
+                //  _dcd_start_xfer(0, _ctrl_buf, 64, TRBCTL_CTL_STAT3);
                  break;
              }
  
@@ -584,7 +603,7 @@
                  if (_xfer_trb[ep][3] & (1 << 0)) { // transfer was configured
                      // dependxfer can only block when actbitlater is set
                      ugbl->guctl2_b.rst_actbitlater = 1;
-                     _dcd_cmd_wait(ep, CMDTYP_DEPENDXFER, 0);
+                    //  _dcd_cmd_wait(ep, CMDTYP_DEPENDXFER, 0);
                      ugbl->guctl2_b.rst_actbitlater = 0;
  
                      // reset the trb byte count and clean the cache
@@ -607,25 +626,27 @@
              // redundant, currently no commands are issued with IOC bit set
          } break;
      }
+*/         
  }
  
  
  static void _dcd_handle_devt(uint8_t evt, uint16_t info)
  {
-     LOG("%010u DEVT evt%u info%u", DWT->CYCCNT, evt, info);
+    TU_LOG2("%010u DEVT evt%u info%u", DWT->CYCCNT, evt, info);
+/*    
      switch (evt) {
          case DEVT_USBRST: {
              _xfer_cfgd = false;
  
              // [TODO] issue depcstall for any ep in stall mode
              udev->dcfg_b.devaddr = 0;
-             LOG("USB reset");
-             dcd_event_bus_reset(TUD_OPT_RHPORT, TUSB_SPEED_HIGH, true); // [TODO] actual speed
+             TU_LOG2("USB reset");
+            //  dcd_event_bus_reset(TUD_OPT_RHPORT, TUSB_SPEED_HIGH, true); // [TODO] actual speed
          } break;
          case DEVT_CONNECTDONE: {
              // read conn speed from dsts
              // program ramclksel in gctl if needed
-             LOG("Connect done");
+             TU_LOG2("Connect done");
  
              udev->depcmd[0].par1 = (0 << 25) | (1 << 10) | (1 << 8);
              udev->depcmd[0].par0 = (2 << 30) | (0 << 22) | (0 << 17) | (64 << 3) | (0 << 1);
@@ -636,16 +657,16 @@
              _dcd_cmd_wait(1, CMDTYP_DEPCFG, 0);
          } break;
          case DEVT_ULSTCHNG: {
-             LOG("Link status change");
+            TU_LOG2("Link status change");
              switch (info) {
                  case 0x3: { // suspend (L2)
-                     dcd_event_bus_signal(TUD_OPT_RHPORT, DCD_EVENT_SUSPEND, true);
+                    //  dcd_event_bus_signal(TUD_OPT_RHPORT, DCD_EVENT_SUSPEND, true);
                  } break;
                  case 0x4: { // disconnected
-                     dcd_event_bus_signal(TUD_OPT_RHPORT, DCD_EVENT_UNPLUGGED, true);
+                    //  dcd_event_bus_signal(TUD_OPT_RHPORT, DCD_EVENT_UNPLUGGED, true);
                  } break;
                  case 0xF: { // resume
-                     dcd_event_bus_signal(TUD_OPT_RHPORT, DCD_EVENT_RESUME, true);
+                    //  dcd_event_bus_signal(TUD_OPT_RHPORT, DCD_EVENT_RESUME, true);
                  } break;
                  default: {}
              }
@@ -661,15 +682,18 @@
              __BKPT(0);
          } break;
          default: {
-             LOG("Unknown DEVT event");
+            TU_LOG2("Unknown DEVT event");
          }
      }
+*/         
  }
  
  
  static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t type)
  {
-     dcd_int_disable(TUD_OPT_RHPORT); // prevent race conditions
+    return 0;
+/*    
+    //  dcd_int_disable(TUD_OPT_RHPORT); // prevent race conditions
  
      // program the trb and clean the cache
      _xfer_trb[ep][0] = buf ? (uint32_t) LocalToGlobal(buf) : 0;
@@ -682,10 +706,11 @@
      udev->depcmd[ep].par1 = (uint32_t) LocalToGlobal(_xfer_trb[ep]);
      udev->depcmd[ep].par0 = 0;
  
-     dcd_int_enable(TUD_OPT_RHPORT);
+    //  dcd_int_enable(TUD_OPT_RHPORT);
  
      // issue the block command and pass the status
      return _dcd_cmd_wait(ep, CMDTYP_DEPSTRTXFER, 0);
+*/     
  }
  
  #endif // CFG_TUD_ENABLED
