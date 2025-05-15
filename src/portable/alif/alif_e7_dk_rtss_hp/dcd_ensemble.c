@@ -9,25 +9,60 @@
  */
 
  #include "tusb_option.h"
+ #include <zephyr/kernel.h>
 
  #if CFG_TUD_ENABLED
  
- #if defined(CORE_M55_HE)
-//  #include "M55_HE.h"
- 
- #elif defined(CORE_M55_HP)
-//  #include "M55_HP.h"
- #else
- #error "Unsupported core!"
- #endif
+#if defined(__ZEPHYR__)
+  #pragma message("Building for Zephyr RTOS")
+  #include <soc_memory_map.h>     // for local_to_global() function
+
+    #define LOG_ALIF_INFO(fmt, ...)  \
+        printf("[%lld ms] INFO  %s: " fmt "\n", k_uptime_get(), __func__, ##__VA_ARGS__)
+
+    #define LOG_ALIF_ERROR(fmt, ...) \
+        printf("[%lld ms] ERROR %s: " fmt "\n", k_uptime_get(), __func__, ##__VA_ARGS__)
+
+    // ToDO: remove this when USB_CTRL_BASE is defined in device tree
+    #define USB_CTRL_BASE   0x48200000
+    #define USB_ALIF_IRQ    101
+//   #define USB_CTRL_BASE DT_REG_ADDR(DT_INST(0, DT_DRV_COMPAT))
+//   #define USB_ALIF_IRQ  DT_IRQN(DT_INST(0, DT_DRV_COMPAT))
+
+  #include "platform_def.h"
+  #include "dcd_ensemble.h"
+
+
+  // Direct register access for compatibility
+  #define XHC_REG_RD(addr)      sys_read32((addr))
+  #define XHC_REG_WR(addr, val) sys_write32((val), (addr))
+
+  // prototype for the functions
+  bool RTSS_IsCacheClean_Required_by_Addr(volatile void *addr, int32_t size);
+  static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t param);
+
+
+#else
+  #include "clk.h"
+  #include "power.h"
+  #include "alif_dcd_reg.h"
+
+  #if defined(CORE_M55_HE)
+    #pragma message("Building for CORE_M55_HE (baremetal)")
+    #include "M55_HE.h"
+    #include "M55_HE_Config.h"
+  #elif defined(CORE_M55_HP)
+    #pragma message("Building for CORE_M55_HP (baremetal)")
+    #include "M55_HP.h"
+    #include "M55_HP_Config.h"
+  #else
+    #error "Unsupported core!"
+  #endif
+#endif
  
  #include "device/dcd.h"
- 
- #include "alif_dcd_reg.h"
- 
-//  #include "clk.h"
-//  #include "power.h"
- 
+
+
  #define TUSB_ALIF_DEBUG
  #define TUSB_ALIF_DEBUG_DEPTH (2048)
  
@@ -75,119 +110,141 @@
  
  // Initializes the USB peripheral for device mode and enables it.
  // This function should enable internal D+/D- pull-up for enumeration.
- bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) 
- {
-return true;    
+bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) 
+{
+    (void) rh_init;
+    LOG_ALIF_INFO("1");
 
-/*     
-     // enable 20mhz clock
-     enable_cgu_clk20m();
-     // enable usb peripheral clock
-     enable_usb_periph_clk();
-     // power up usb phy
-     enable_usb_phy_power();
-     // disable usb phy isolation
-     disable_usb_phy_isolation();
-     // clear usb phy power-on-reset signal
+    // enable 20mhz clock
+    enable_cgu_clk20m();
+    // enable usb peripheral clock
+    enable_usb_periph_clk();
+    // power up usb phy
+    enable_usb_phy_power();
+    // disable usb phy isolation
+    disable_usb_phy_isolation();
 
-     CLKCTL_PER_MST->USB_CTRL2 &= ~(1 << 8);
- 
-     // force stop/disconnect
-     udev->dctl_b.run_stop = 0;
- 
-     // dctl set csftrst to 1 and wait for 0
-     udev->dctl_b.csftrst = 1;
-     while(0 != udev->dctl_b.csftrst);
- 
-     sys_busy_loop_us(50000);
-     ugbl->gctl_b.coresoftreset = 1;
-     ugbl->gusb2phycfg0_b.physoftrst = 1;
-     sys_busy_loop_us(50000);
-     ugbl->gusb2phycfg0_b.physoftrst = 0;
-     sys_busy_loop_us(50000);
-     ugbl->gctl_b.coresoftreset = 0;
-     sys_busy_loop_us(50000);
- 
-     ugbl->gsbuscfg0 = 0x00000009;
-     // ugbl->gusb2phycfg0 = 0x4000154F; // [TODO] document as bits
-     uint32_t reg = ugbl->gusb2phycfg0;
-     reg &= ~((1 << 3) | (1 << 4) | (0xF << 10)); // clear phyif, ulpi_utmi_sel and usbtrdtim
-     reg |= ((1 << 3) | (5 << 10));
-     ugbl->gusb2phycfg0 = reg;
- 
-     // set device speed (USBHS only)
-     udev->dcfg_b.devspd = 0x0; // HS, this will need #if condition [TODO]
- 
-     // allocate ring buffer for events
-     memset(_evnt_buf, 0, sizeof(_evnt_buf));
-     RTSS_CleanDCache_by_Addr(_evnt_buf, sizeof(_evnt_buf));
-     _evnt_tail = _evnt_buf;
-     ugbl->gevntadrlo0 = (uint32_t) LocalToGlobal(_evnt_buf);
-     ugbl->gevntsiz0_b.eventsiz = (uint32_t) sizeof(_evnt_buf);
-     ugbl->gevntcount0_b.evntcount = 0;
- 
-     // write devten to enable usb reset, conn done, link state change...
-     udev->devten_b.dissconnevten = 1;
-     udev->devten_b.usbrstevten = 1;
-     udev->devten_b.connectdoneevten = 1;
-     udev->devten_b.ulstcngen = 1;
- 
-     // begin endpoint setup
-     _dcd_cmd_wait(0, CMDTYP_DEPSTARTCFG, 0);
- 
-     // configure CONTROL IN and OUT eps
-     udev->depcmd[0].par1 = (0 << 25) | (1 << 10) | (1 << 8);
-     udev->depcmd[0].par0 = (0 << 22) | (0 << 17) | (512 << 3) | (0 << 1);
-     _dcd_cmd_wait(0, CMDTYP_DEPCFG, 0);
- 
-     udev->depcmd[1].par1 = (1 << 25) | (1 << 10) | (1 << 8);
-     udev->depcmd[1].par0 = (0 << 22) | (0 << 17) | (512 << 3) | (0 << 1);
-     _dcd_cmd_wait(1, CMDTYP_DEPCFG, 0);
- 
-     // set initial xfer configuration for CONTROL eps
-     udev->depcmd[0].par0 = 1;
-     _dcd_cmd_wait(0, CMDTYP_DEPXFERCFG, 0);
- 
-     udev->depcmd[1].par0 = 1;
-     _dcd_cmd_wait(1, CMDTYP_DEPXFERCFG, 0);
- 
-     // enable pull-ups
-     dcd_connect(rhport);
- 
-     // prepare trb for the first setup packet
-     memset(_ctrl_buf, 0, sizeof(_ctrl_buf));
-     _xfer_trb[0][0] = (uint32_t) LocalToGlobal(_ctrl_buf);
-     volatile uint32_t *x1 = _ctrl_buf;
-     volatile uint32_t *x2 = (uint32_t) LocalToGlobal(_ctrl_buf);
-     
-     _xfer_trb[0][1] = 0;
-     _xfer_trb[0][2] = 8;
-     _xfer_trb[0][3] = (1 << 11) | (1 << 10) | (TRBCTL_CTL_SETUP << 4) | (1 << 1) | (1 << 0);
-     RTSS_CleanDCache_by_Addr(_xfer_trb[0], sizeof(_xfer_trb[0]));
- 
-     // send trb to the usb dma
-     udev->depcmd[0].par1 = (uint32_t) LocalToGlobal(_xfer_trb[0]);
-     udev->depcmd[0].par0 = 0;
-     _dcd_cmd_wait(0, CMDTYP_DEPSTRTXFER, 0);
- 
-     // enable ep event interrupts for CONTROL OUT and IN
-     udev->dalepena_b.usbactep = (1 << 1) | (1 << 0);
- 
-     // enable interrupts in the NVIC
- #if !defined(TUSB_ALIF_NO_IRQ_CFG)
-     NVIC_ClearPendingIRQ(USB_IRQ_IRQn);
-     NVIC_SetPriority(USB_IRQ_IRQn, 5);
- #endif
-     dcd_int_enable(rhport);
-*/
- }
- 
+    LOG_ALIF_INFO("2");
+    
+    // clear usb phy power-on-reset signal
+    usb_ctrl2_phy_power_on_reset_clear();
+
+
+    // force stop/disconnect
+    dcd_disconnect(-1);     // ToDO: check if this is needed
+
+	// Device soft reset
+	sys_set_bits(DCTL_REG, DCTL_CSFTRST);
+	while (sys_test_bit(DCTL_REG, DCTL_CSFTRST)) {
+        k_busy_wait(1 * 1000);  // 1000 μs = 1 ms
+	}
+
+	// Core + PHY soft reset
+    k_busy_wait(50 * 1000); // 50 ms
+	sys_set_bits(GCTL_REG, GCTL_CORESOFTRESET);
+	sys_set_bits(GUSB2PHYCFG0_REG, GUSB2PHYCFG0_PHYSOFTRST);
+	k_busy_wait(50 * 1000); // 50 ms
+	sys_clear_bits(GUSB2PHYCFG0_REG, GUSB2PHYCFG0_PHYSOFTRST);
+    k_busy_wait(50 * 1000); // 50 ms
+	sys_clear_bits(GCTL_REG, GCTL_CORESOFTRESET);
+    k_busy_wait(50 * 1000); // 50 ms
+
+	// Check controller ID
+	uint32_t rd_val = XHC_REG_RD(GSNPSID_REG);
+	if ((rd_val & 0xFFFF0000) != 0x55330000) {
+		LOG_ALIF_ERROR("Invalid USB controller ID! Expected 0x5533xxxx, got 0x%08x", rd_val);
+		return -ENODEV;
+	}
+    LOG_ALIF_INFO("Controller ID: 0x%08x", rd_val);
+
+	// Global bus config
+	XHC_REG_WR(GSBUSCFG0_REG, GSBUSCFG0_INCRBRSTENA | GSBUSCFG0_INCR16BRSTENA);
+
+	// Configure USB2 PHY
+	rd_val = XHC_REG_RD(GUSB2PHYCFG0_REG);
+	rd_val &= ~(GUSB2PHYCFG0_PHYIF | GUSB2PHYCFG0_ULPI_UTMI_SEL | GUSB2PHYCFG0_USBTRDTIM_MASK);
+	rd_val |= GUSB2PHYCFG0_PHYIF | GUSB2PHYCFG0_USBTRDTIM(5); // UTMI+, 8-bit, HS
+	XHC_REG_WR(GUSB2PHYCFG0_REG, rd_val);
+
+
+	// Set Device Speed (USBHS only)
+	sys_clear_bits(DCFG_REG, DCFG_SPEED_MASK); // ToDo: Full Speed
+
+    // allocate ring buffer for events
+    memset(_evnt_buf, 0, sizeof(_evnt_buf));
+    RTSS_CleanDCache_by_Addr((uint32_t *)_evnt_buf, sizeof(_evnt_buf));
+    _evnt_tail = _evnt_buf;
+
+	XHC_REG_WR(GEVNTADDRL0_REG, (uint32_t)local_to_global(_evnt_buf));
+	// Set Event Buffer Size
+	sys_clear_bits(GEVNTSIZ0_REG, GEVNTSIZ0_EVENTSIZ_MASK);
+	sys_set_bits(GEVNTSIZ0_REG, GEVNTSIZ0_EVENTSIZ(sizeof(_evnt_buf)));
+	// Clear Event Buffer counter
+	sys_clear_bits(GEVNTCOUNT0_REG, GEVNTCOUNT0_EVNTCOUNT_MASK);
+
+	// Enable USB events
+	sys_set_bits(DEVTEN_REG, DEVTEN_DISSCONEVTEN);
+	sys_set_bits(DEVTEN_REG, DEVTEN_USBRSTEVTEN);
+	sys_set_bits(DEVTEN_REG, DEVTEN_CONNECTDONEEVTEN);
+	sys_set_bits(DEVTEN_REG, DEVTEN_ULSTCNGEN);
+
+	// Endpoint Configuration - Start config phase
+	uint8_t st = usb_dc_alif_send_ep_cmd(0, DEPCMD_DEPSTARTCFG, 0);
+	if (st != 0) {
+		LOG_ALIF_ERROR("EP0 DEPSTARTCFG failed, status=0x%02x", st);
+	}
+
+	// Endpoint Configuration - EP0 OUT (ep = 0)
+	uint8_t ep_idx = 0;
+
+	// XHC_REG_WR(DEPCMDPAR1N(ep_idx), (0 << 25) | (1 << 10) | (1 << 8));
+	uint32_t addr = DEPCMDPAR1N(ep_idx);
+	uint32_t val = (0 << 25) | (1 << 10) | (1 << 8);
+	LOG_ALIF_INFO("EP%u OUT addr=0x%08x, val=0x%08x", ep_idx, addr, val);
+	XHC_REG_WR(addr, val);
+
+	// XHC_REG_WR(DEPCMDPAR0N(ep_idx), (0 << 22) | (0 << 17) | (512 << 3) | (0 << 1));
+	addr = DEPCMDPAR0N(ep_idx);
+	val = (0 << 22) | (0 << 17) | (512 << 3) | (0 << 1);
+	LOG_ALIF_INFO("EP%u OUT addr=0x%08x, val=0x%08x", ep_idx, addr, val);
+	XHC_REG_WR(addr, val);
+
+	st = usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0);
+	if (st != 0) {
+		LOG_ALIF_ERROR("EP%d DEPCFG failed, status=0x%02x", ep_idx, st);
+	}
+
+	// Endpoint Configuration - EP0 IN (ep = 1)
+	ep_idx = 1;
+	XHC_REG_WR(DEPCMDPAR1N(ep_idx), (1 << 25) | (1 << 10) | (1 << 8));
+	XHC_REG_WR(DEPCMDPAR0N(ep_idx), (0 << 22) | (0 << 17) | (512 << 3) | (0 << 1));
+	st = usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0);
+	if (st != 0) {
+		LOG_ALIF_ERROR("EP%d DEPCFG failed, status=0x%02x", ep_idx, st);
+	}
+
+	XHC_REG_WR(DEPCMDPAR0N(0), 1);
+	st = usb_dc_alif_send_ep_cmd(0, DEPCMD_DEPXFERCFG, 0);
+	if (st != 0) {
+		LOG_ALIF_ERROR("EP%d DEPXFERCFG failed, status=0x%02x", ep_idx, st);
+	}
+	XHC_REG_WR(DEPCMDPAR0N(ep_idx), 1);
+	st = usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPXFERCFG, 0);
+	if (st != 0) {
+		LOG_ALIF_ERROR("EP%d DEPXFERCFG failed, status=0x%02x", ep_idx, st);
+	}
+
+	// 7. Enable IRQ
+	IRQ_CONNECT(USB_ALIF_IRQ, 5, dcd_int_handler, NULL, 0);
+    
+	return true;
+} 
  
  // Processes all the hardware generated events e.g bus reset, new data packet
  // from host... It will be called by application in the MCU USB interrupt handler.
  void dcd_int_handler(uint8_t rhport)
  {
-     TU_LOG2("%010u IRQ enter, evntcount %u", DWT->CYCCNT, ugbl->gevntcount0_b.evntcount);
+     LOG_ALIF_INFO("-->>");
 
 /*    
      // process failures first
@@ -237,10 +294,9 @@ return true;
  // shared between main code and the interrupt handler.
  void dcd_int_enable (uint8_t rhport)
  {
-/*    
-     NVIC_EnableIRQ(USB_IRQ_IRQn);
-      (void) rhport;
-*/     
+    LOG_ALIF_INFO("-->>");
+    sb_dc_alif_int_enable();
+    (void) rhport;
  }
  
  // Disables the USB device interrupt.
@@ -248,6 +304,16 @@ return true;
  // shared between main code and the interrupt handler.
  void dcd_int_disable(uint8_t rhport)
  {
+    LOG_ALIF_INFO("-->>");
+ 
+     // [TODO] check if this is needed
+     // dcd_edpt_xfer(rhport, tu_edpt_addr(0, TUSB_DIR_IN), NULL, 0);
+ 
+     // [TODO] check if this is needed
+     // dcd_event_xfer_complete(rhport, tu_edpt_addr(0, TUSB_DIR_IN), 0,
+     //                         XFER_RESULT_SUCCESS, true);
+ 
+     // disable usb device mode
 /*    
      NVIC_DisableIRQ(USB_IRQ_IRQn);
       (void) rhport;
@@ -259,6 +325,16 @@ return true;
  // leave this empty and also no queue an event for the corresponding SETUP packet.
  void dcd_set_address(uint8_t rhport, uint8_t dev_addr)
  {
+    LOG_ALIF_INFO("-->>");
+ 
+     // [TODO] check if this is needed
+     // dcd_edpt_xfer(rhport, tu_edpt_addr(0, TUSB_DIR_IN), NULL, 0);
+ 
+     // [TODO] check if this is needed
+     // dcd_event_xfer_complete(rhport, tu_edpt_addr(0, TUSB_DIR_IN), 0,
+     //                         XFER_RESULT_SUCCESS, true);
+ 
+     // [TODO] check if this is needed
 /*    
      TU_LOG2("%010u >%s", DWT->CYCCNT, __func__);
  
@@ -270,31 +346,31 @@ return true;
  // Called to remote wake up host when suspended (e.g hid keyboard)
  void dcd_remote_wakeup(uint8_t rhport)
  {
-    TU_LOG2("%010u >%s", DWT->CYCCNT, __func__);
+    LOG_ALIF_INFO("%010u >%s", DWT->CYCCNT, __func__);
  }
  
  // Connect by enabling internal pull-up resistor on D+/D-
  void dcd_connect(uint8_t rhport)
  {
-     udev->dctl_b.run_stop = 1;
- 
+    LOG_ALIF_INFO("-->>");  
+     // [TODO] clear all xfers and eps first
+    sys_set_bits(DCTL_REG, DCTL_RUN_STOP);
      (void) rhport;
  }
  
  // Disconnect by disabling internal pull-up resistor on D+/D-
  void dcd_disconnect(uint8_t rhport)
  {
+    LOG_ALIF_INFO("-->>");  
      // [TODO] clear all xfers and eps first
- 
-     udev->dctl_b.run_stop = 0;
- 
+    sys_clear_bits(DCTL_REG, DCTL_RUN_STOP);
      (void) rhport;
  }
  
  // Enable/Disable Start-of-frame interrupt. Default is disabled
  void dcd_sof_enable(uint8_t rhport, bool en)
  {
-    TU_LOG2("%010u >%s", DWT->CYCCNT, __func__);
+    LOG_ALIF_INFO("%010u >%s", DWT->CYCCNT, __func__);
  }
  
  
@@ -304,7 +380,7 @@ return true;
  // May help DCD to prepare for next control transfer, this API is optional.
  void dcd_edpt0_status_complete(uint8_t rhport, tusb_control_request_t const * request)
  {
-    TU_LOG2("%010u >%s", DWT->CYCCNT, __func__);
+    LOG_ALIF_INFO("%010u >%s", DWT->CYCCNT, __func__);
  
      _ctrl_long_data = false;
      _dcd_start_xfer(TUSB_DIR_OUT, _ctrl_buf, 8, TRBCTL_CTL_SETUP);
@@ -319,7 +395,7 @@ return true;
  // Also make sure to enable endpoint specific interrupts.
  bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
  {
-    TU_LOG2("%010u >%s %u %s %u %u", DWT->CYCCNT, __func__, desc_ep->bEndpointAddress,
+    LOG_ALIF_INFO("%010u >%s %u %s %u %u", DWT->CYCCNT, __func__, desc_ep->bEndpointAddress,
          desc_ep->bmAttributes.xfer == TUSB_XFER_BULK ? "bulk" : "int",
          desc_ep->wMaxPacketSize, desc_ep->bInterval);
  
@@ -331,26 +407,26 @@ return true;
  
      // [TODO] verify that the num doesn't exceed hw max
  
-     if (false == _xfer_cfgd) {
-         _dcd_cmd_wait(0, CMDTYP_DEPSTARTCFG, 2);
-         _xfer_cfgd = true;
-     }
+    //  if (false == _xfer_cfgd) {
+    //      _dcd_cmd_wait(0, CMDTYP_DEPSTARTCFG, 2);
+    //      _xfer_cfgd = true;
+    //  }
  
-     uint8_t fifo_num = TUSB_DIR_IN == tu_edpt_dir(desc_ep->bEndpointAddress) ?
-                        tu_edpt_number(desc_ep->bEndpointAddress) : 0;
-     uint8_t interval = 0 < desc_ep->bInterval ? (desc_ep->bInterval - 1) : 0;
+    //  uint8_t fifo_num = TUSB_DIR_IN == tu_edpt_dir(desc_ep->bEndpointAddress) ?
+    //                     tu_edpt_number(desc_ep->bEndpointAddress) : 0;
+    //  uint8_t interval = 0 < desc_ep->bInterval ? (desc_ep->bInterval - 1) : 0;
  
-     udev->depcmd[ep].par1 = (ep << 25) | (interval << 16) |
-                             (1 << 10) | (1 << 8);
-     udev->depcmd[ep].par0 = (0 << 30) | (0 << 22) | (fifo_num << 17) |
-                             ((desc_ep->wMaxPacketSize & 0x7FF) << 3) |
-                             (desc_ep->bmAttributes.xfer << 1);
+    //  udev->depcmd[ep].par1 = (ep << 25) | (interval << 16) |
+    //                          (1 << 10) | (1 << 8);
+    //  udev->depcmd[ep].par0 = (0 << 30) | (0 << 22) | (fifo_num << 17) |
+    //                          ((desc_ep->wMaxPacketSize & 0x7FF) << 3) |
+    //                          (desc_ep->bmAttributes.xfer << 1);
  
-     _dcd_cmd_wait(ep, CMDTYP_DEPCFG, 0);
-     udev->depcmd[ep].par0 = 1;
-     _dcd_cmd_wait(ep, CMDTYP_DEPXFERCFG, 0);
+    //  _dcd_cmd_wait(ep, CMDTYP_DEPCFG, 0);
+    //  udev->depcmd[ep].par0 = 1;
+    //  _dcd_cmd_wait(ep, CMDTYP_DEPXFERCFG, 0);
  
-     udev->dalepena_b.usbactep |= (1 << ep);
+    //  udev->dalepena_b.usbactep |= (1 << ep);
  
      return true;
  }
@@ -360,7 +436,7 @@ return true;
  // required for multiple configuration support.
  void dcd_edpt_close_all(uint8_t rhport)
  {
-    TU_LOG2("%010u >%s", DWT->CYCCNT, __func__);
+    LOG_ALIF_INFO("%010u >%s", DWT->CYCCNT, __func__);
  }
  
  // Close an endpoint. his function is used for implementing alternate settings.
@@ -375,6 +451,7 @@ return true;
  // notify the stack
  bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t total_bytes)
  {
+    LOG_ALIF_INFO("-->>");
  
 return true;    
 /*
@@ -447,16 +524,16 @@ return true;
  void dcd_edpt_stall(uint8_t rhport, uint8_t ep_addr)
  {
      // DEPSSTALL command
-     TU_LOG2(">%s", __func__);
+     LOG_ALIF_INFO("-->>");
  
-     uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
+    //  uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
  
-     _dcd_cmd_wait(ep, CMDTYP_DEPSSTALL, 0);
+    //  _dcd_cmd_wait(ep, CMDTYP_DEPSSTALL, 0);
  
-     if (0 == tu_edpt_number(ep_addr)) {
-         _ctrl_long_data = false;
-         _dcd_start_xfer(TUSB_DIR_OUT, _ctrl_buf, 8, TRBCTL_CTL_SETUP);
-     }
+    //  if (0 == tu_edpt_number(ep_addr)) {
+    //      _ctrl_long_data = false;
+    //      _dcd_start_xfer(TUSB_DIR_OUT, _ctrl_buf, 8, TRBCTL_CTL_SETUP);
+    //  }
  }
  
  // clear stall, data toggle is also reset to DATA0
@@ -465,15 +542,18 @@ return true;
  void dcd_edpt_clear_stall(uint8_t rhport, uint8_t ep_addr)
  {
      // DEPCSTALL command
-     TU_LOG2(">%s", __func__);
+     LOG_ALIF_INFO("-->>");
  
-     uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
+    //  uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
  
-     _dcd_cmd_wait(ep, CMDTYP_DEPCSTALL, 0);
+    //  _dcd_cmd_wait(ep, CMDTYP_DEPCSTALL, 0);
  }
  
  void dcd_uninit(void)
  {
+    LOG_ALIF_INFO("-->>");
+ 
+     // disable usb device mode
 /*    
      CLKCTL_PER_MST->USB_CTRL2 |= 1 << 8; // set usb phy power-on-reset signal
      enable_usb_phy_isolation(); // enable usb phy isolation
@@ -482,38 +562,36 @@ return true;
 */     
  }
  
- void USB_IRQHandler(void)
- {
-    //  dcd_int_handler(TUD_OPT_RHPORT);
- }
- 
  
  static uint8_t _dcd_cmd_wait(uint8_t ep, uint8_t typ, uint16_t param)
  {
+    LOG_ALIF_INFO("-->>");
+    return 0;
+
      // capture phy state and disable lpm and suspend
-     uint32_t phycfg = ugbl->gusb2phycfg0;
-     ugbl->gusb2phycfg0_b.enblslpm = 0;
-     ugbl->gusb2phycfg0_b.suspendusb20 = 0;
+    //  uint32_t phycfg = ugbl->gusb2phycfg0;
+    //  ugbl->gusb2phycfg0_b.enblslpm = 0;
+    //  ugbl->gusb2phycfg0_b.suspendusb20 = 0;
  
-     // set up command in depcmd register
-     udev->depcmd[ep].depcmd_b.cmdtyp = typ;
-     udev->depcmd[ep].depcmd_b.cmdioc = 0;
-     udev->depcmd[ep].depcmd_b.commandparam = param;
+    //  // set up command in depcmd register
+    //  udev->depcmd[ep].depcmd_b.cmdtyp = typ;
+    //  udev->depcmd[ep].depcmd_b.cmdioc = 0;
+    //  udev->depcmd[ep].depcmd_b.commandparam = param;
  
-     // dispatch command and wait for completion
-     udev->depcmd[ep].depcmd_b.cmdact = 1;
-     while(0 != udev->depcmd[ep].depcmd_b.cmdact);
+    //  // dispatch command and wait for completion
+    //  udev->depcmd[ep].depcmd_b.cmdact = 1;
+    //  while(0 != udev->depcmd[ep].depcmd_b.cmdact);
  
-     // restore phy state
-     ugbl->gusb2phycfg0 = phycfg;
+    //  // restore phy state
+    //  ugbl->gusb2phycfg0 = phycfg;
  
-     return udev->depcmd[ep].depcmd_b.cmdstatus;
+    //  return udev->depcmd[ep].depcmd_b.cmdstatus;
  }
  
  
  static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par)
  {
-    TU_LOG2("%010u DEPEVT ep%u evt%u sts%u par%u", DWT->CYCCNT, ep, evt, sts, par);
+    LOG_ALIF_INFO("%010u DEPEVT ep%u evt%u sts%u par%u", DWT->CYCCNT, ep, evt, sts, par);
 /* 
      switch (evt) {
          case DEPEVT_XFERCOMPLETE: {
@@ -632,7 +710,7 @@ return true;
  
  static void _dcd_handle_devt(uint8_t evt, uint16_t info)
  {
-    TU_LOG2("%010u DEVT evt%u info%u", DWT->CYCCNT, evt, info);
+    LOG_ALIF_INFO("%010u DEVT evt%u info%u", DWT->CYCCNT, evt, info);
 /*    
      switch (evt) {
          case DEVT_USBRST: {
@@ -691,6 +769,7 @@ return true;
  
  static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t type)
  {
+    LOG_ALIF_INFO("-->>");
     return 0;
 /*    
     //  dcd_int_disable(TUD_OPT_RHPORT); // prevent race conditions
@@ -712,5 +791,83 @@ return true;
      return _dcd_cmd_wait(ep, CMDTYP_DEPSTRTXFER, 0);
 */     
  }
+
+
+ // Only for Zephyr specific functions -----------------------------------
+#if defined(__ZEPHYR__)
+
+ __STATIC_FORCEINLINE
+bool RTSS_Is_TCM_Addr(const volatile void *local_addr)
+{
+	uint32_t addr = (uint32_t)local_addr;
+
+	return ((addr < (ITCM_BASE + ITCM_SIZE)) ||
+		((addr > DTCM_BASE) && (addr < (DTCM_BASE + DTCM_SIZE))));
+}
+
+bool RTSS_IsCacheClean_Required_by_Addr(volatile void *addr, int32_t size)
+{
+	(void)size;
+	/*
+	 * This is a hook, where user can redefine its implementation in application.
+	 *
+	 * For some scenarios, User do not need to do anything apart from DSB for
+	 * un-cached or shared regions, and do not need to clean write-through regions.
+	 * This particular API is introduced to reduce the overhead in Cache operation
+	 * function for the above scenarios mentioned.
+	 *
+	 * User can define the range of memories for the cache operations can be skipped.
+	 * Return True if cache operation is required else return False.
+	 *
+	 */
+
+	/*
+	 * If the provided address is in TCM, then no cache operation is required
+	 */
+	if (RTSS_Is_TCM_Addr(addr)) {
+		return false;
+	}
+
+	return true;
+}
+
+static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t param)
+{
+	// LOG_ALIF_INFO(" ep=0x%02x, cmd_type=0x%02x, param=0x%04x", ep, cmd_type, param);
+
+	// Store PHY configuration
+	uint32_t phycfg = XHC_REG_RD(GUSB2PHYCFG0_REG);
+	sys_clear_bits(GUSB2PHYCFG0_REG, GUSB2PHYCFG0_ENBLSLPM);
+	sys_clear_bits(GUSB2PHYCFG0_REG, GUSB2PHYCFG0_SUSPENDUSB20);
+
+	// Set up command in DEPCMD register
+	uint32_t cmd = XHC_REG_RD(DEPCMDN(ep));
+	cmd &= ~DEPCMD_CMDTYP_MASK;
+	cmd |= DEPCMD_CMDTYP(cmd_type);
+
+	cmd &= ~DEPCMD_CMDIOC; // Clear IOC bit
+
+	cmd &= ~DEPCMD_PARAM_MASK;
+	cmd |= DEPCMD_PARAM(param);
+
+	cmd |= DEPCMD_CMDACT; // Set ACT bit
+	XHC_REG_WR(DEPCMDN(ep), cmd);
+
+	// Wait for command completion
+	while (XHC_REG_RD(DEPCMDN(ep)) & DEPCMD_CMDACT) {
+        k_busy_wait(1);
+	}
+
+	// Restore PHY configuration
+	XHC_REG_WR(GUSB2PHYCFG0_REG, phycfg);
+
+	uint8_t status = (XHC_REG_RD(DEPCMDN(ep)) >> 12) & 0x0F; // Get command status
+	// LOG_DBG("DEPCMD complete: ep=%02x, cmd=0x%02x, result=0x%02x", ep, cmd_type, status);
+
+	return status;
+}
+
+#endif 
+ 
  
  #endif // CFG_TUD_ENABLED

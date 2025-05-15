@@ -15,7 +15,8 @@ if (NOT board_cmake_included)
 endif()
 
 # add system files
-set(HAL_DIR ${TOP}/modules/hal/alif/)
+# set(HAL_DIR ${TOP}/modules/hal/alif/)
+# message(STATUS ">>> Selected HAL_DIR                 = ${HAL_DIR}")
 
 
 function(family_configure_example TARGET RTOS)
@@ -27,7 +28,6 @@ message(STATUS ">>> TARGET                           = ${TARGET}")
 message(STATUS ">>> BOARD                            = ${BOARD}")
 message(STATUS ">>> TOP                              = ${TOP}")
 message(STATUS ">>> Selected MCU_VARIANT             = ${MCU_VARIANT}")
-message(STATUS ">>> Selected HAL_DIR                 = ${HAL_DIR}")
 
 # Board target
   if (NOT RTOS STREQUAL zephyr)
@@ -44,7 +44,7 @@ message(STATUS ">>> Selected HAL_DIR                 = ${HAL_DIR}")
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/family.c
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../board.c
     # HAL
-    ${HAL_DIR}/common/src/system.c
+    # ${HAL_DIR}/common/src/system.c
 
     )
     
@@ -60,17 +60,20 @@ message(STATUS ">>> Selected HAL_DIR                 = ${HAL_DIR}")
 
 # Map MCU_VARIANT to compile definitions and TinyUSB option                   #
 if (MCU_VARIANT STREQUAL "ENSEMBLE7_HE")
-  message(STATUS "Building for CORE_M55_HE")
-  add_compile_definitions(CORE_M55_HE)
-  family_add_tinyusb(${TARGET} OPT_MCU_ALIF_E7_HE)
-  target_sources(${TARGET} PRIVATE
-    # ${TOP}/src/portable/alif/alif_e7_dk_rtss_he/dcd_ensemble.c
+    message(STATUS "Building for CORE_M55_HE")
+    add_compile_definitions(CORE_M55_HE)
+    # set macros for CMSIS
+    add_compile_definitions(M55_HE)
+    family_add_tinyusb(${TARGET} OPT_MCU_ALIF_E7_HE)
+    target_sources(${TARGET} PRIVATE
+        # ${TOP}/src/portable/alif/alif_e7_dk_rtss_he/dcd_ensemble.c
     )
     
   elseif (MCU_VARIANT STREQUAL "ENSEMBLE7_HP")
     message(STATUS "Building for CORE_M55_HP")
     add_compile_definitions(CORE_M55_HP)
-
+    # set macros for CMSIS
+    add_compile_definitions(M55_HP)
     # Add TinyUSB target and port source
     family_add_tinyusb(${TARGET} OPT_MCU_ALIF_E7_HP)
     target_sources(${TARGET} PRIVATE
