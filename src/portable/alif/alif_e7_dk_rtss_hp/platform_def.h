@@ -276,6 +276,9 @@
 #define USB_CTRL2_FLADJ_MASK   (0x3F << 0) /* FLADJ_30MHZ_REG: Frequency Adjust Val (bits [5:0]) */
 #define USB_CTRL2_FLADJ_SET(x) (((x) & 0x3F) << 0)
 
+/* USB_CTRL2 Register @ Offset 0xC19C Global User Control Register 2 */
+#define GUCTL2_RST_ACTBITLATER  BIT(14) /* Reset Active Bit Later */
+
 // DEPEVT event types
 enum {
 	// reserved
