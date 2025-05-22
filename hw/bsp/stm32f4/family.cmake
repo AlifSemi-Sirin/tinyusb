@@ -7,8 +7,11 @@ set(ST_HAL_DRIVER ${TOP}/hw/mcu/st/stm32${ST_FAMILY}xx_hal_driver)
 set(ST_CMSIS ${TOP}/hw/mcu/st/cmsis_device_${ST_FAMILY})
 set(CMSIS_5 ${TOP}/lib/CMSIS_5)
 
-# include board specific
-include(${CMAKE_CURRENT_LIST_DIR}/boards/${BOARD}/board.cmake)
+# include board specific, for zephyr BOARD_ALIAS may be used instead
+include(${CMAKE_CURRENT_LIST_DIR}/boards/${BOARD}/board.cmake OPTIONAL RESULT_VARIABLE board_cmake_included)
+if (NOT board_cmake_included)
+  include(${CMAKE_CURRENT_LIST_DIR}/boards/${BOARD_ALIAS}/board.cmake)
+endif ()
 
 # toolchain set up
 set(CMAKE_SYSTEM_CPU cortex-m4 CACHE INTERNAL "System Processor")
@@ -105,14 +108,17 @@ endfunction()
 # Functions
 #------------------------------------
 function(family_configure_example TARGET RTOS)
-  family_configure_common(${TARGET} ${RTOS})
-
   # Board target
-  add_board_target(board_${BOARD})
+  if (NOT RTOS STREQUAL zephyr)
+    add_board_target(board_${BOARD})
+    target_link_libraries(${TARGET} PUBLIC board_${BOARD})
+  endif ()
+
+  family_configure_common(${TARGET} ${RTOS})
 
   #---------- Port Specific ----------
   # These files are built for each example since it depends on example's tusb_config.h
-  target_sources(${TARGET} PUBLIC
+  target_sources(${TARGET} PRIVATE
     # BSP
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/family.c
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../board.c
@@ -123,20 +129,20 @@ function(family_configure_example TARGET RTOS)
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD}
     )
+  if (RTOS STREQUAL zephyr AND DEFINED BOARD_ALIAS AND NOT BOARD STREQUAL BOARD_ALIAS)
+    target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD_ALIAS})
+  endif ()
 
   # Add TinyUSB target and port source
   family_add_tinyusb(${TARGET} OPT_MCU_STM32F4)
-  target_sources(${TARGET} PUBLIC
+  target_sources(${TARGET} PRIVATE
     ${TOP}/src/portable/synopsys/dwc2/dcd_dwc2.c
     ${TOP}/src/portable/synopsys/dwc2/hcd_dwc2.c
     ${TOP}/src/portable/synopsys/dwc2/dwc2_common.c
     )
-  target_link_libraries(${TARGET} PUBLIC board_${BOARD})
-
-
 
   # Flashing
-  family_add_bin_hex(${TARGET})
+#  family_add_bin_hex(${TARGET})
   family_flash_stlink(${TARGET})
   family_flash_jlink(${TARGET})
 endfunction()
