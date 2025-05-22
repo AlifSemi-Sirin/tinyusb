@@ -105,6 +105,16 @@ void board_init(void) {
 
   // If freeRTOS is used, IRQ priority is limit by max syscall ( smaller is higher )
   NVIC_SetPriority(OTG_FS_IRQn, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY );
+#elif CFG_TUSB_OS == OPT_OS_ZEPHYR
+
+#define DT_DRV_COMPAT    st_stm32_otgfs
+#define USB_IRQ_NAME     otgfs
+#define USB_IRQ         DT_INST_IRQ_BY_NAME(0, USB_IRQ_NAME, irq)
+#define USB_IRQ_PRI     DT_INST_IRQ_BY_NAME(0, USB_IRQ_NAME, priority)
+
+  IRQ_CONNECT(USB_IRQ, USB_IRQ_PRI,
+              OTG_FS_IRQHandler, 0, 0);
+  irq_enable(USB_IRQ);
 #endif
 
   board_led_write(false);

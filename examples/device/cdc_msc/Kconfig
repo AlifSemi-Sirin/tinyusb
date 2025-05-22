@@ -1,0 +1,20 @@
+config USE_STM32_HAL_CORTEX
+    default y
+    bool
+    help
+      Enable STM32Cube CORTEX HAL module driver
+
+config USE_STM32_HAL_GPIO
+    default y
+    bool
+    help
+      Enable STM32Cube General-purpose I/Os (GPIO) HAL module driver
+
+config USE_STM32_HAL_UART
+    default y
+    bool
+    help
+      Enable STM32Cube Universal asynchronous receiver transmitter (USART)
+      HAL module driver
+
+source "Kconfig.zephyr"
