@@ -10,6 +10,7 @@ set(FAMILY_MCUS ALIF_E7 CACHE INTERNAL "")
 
 # Include board specific settings
 include(${CMAKE_CURRENT_LIST_DIR}/boards/${BOARD}/board.cmake OPTIONAL RESULT_VARIABLE board_cmake_included)
+message(>>> "CMAKE_CURRENT_LIST_DIR / BOARD = ${CMAKE_CURRENT_LIST_DIR} / ${BOARD}")
 if (NOT board_cmake_included)
   message(FATAL_ERROR "Board CMake not found for BOARD=${BOARD}")
 endif()
@@ -77,8 +78,12 @@ if (MCU_VARIANT STREQUAL "ENSEMBLE7_HE")
     # Add TinyUSB target and port source
     family_add_tinyusb(${TARGET} OPT_MCU_ALIF_E7_HP)
     target_sources(${TARGET} PRIVATE
-      ${TOP}/src/portable/alif/alif_e7_dk_rtss_hp/dcd_ensemble.c
+      ${TOP}/src/portable/alif/alif_e7_dk/dcd_ensemble.c
       )
+    zephyr_include_directories(
+        ${ZEPHYR_BASE}/soc/alif/ensemble/common
+    )
+    
 else()
   message(FATAL_ERROR "Unsupported MCU_VARIANT='${MCU_VARIANT}'.")
 endif()

@@ -11,6 +11,17 @@
 #ifndef DCD_ENSEMBLE_H_
 #define DCD_ENSEMBLE_H_
 
+/* Enable clock supply for USB */
+#define PERIPH_CLK_ENA_USB_CKEN (1U << 20)
+
+/* CGU CLK_ENA field definitions */
+#define CLK_ENA_CLK160M    (1U << 20) /* Enable 160M_CLK */
+#define CLK_ENA_CLK100M    (1U << 21) /* Enable 100M_CLK */
+#define CLK_ENA_CLK20M     (1U << 22) /* Enable USB and 10M_CLK */
+#define CLK_ENA_CLK38P4M   (1U << 23) /* Enable HFOSC_CLK */
+
+
+
 // Option for tinyUSB porting
 #define TUD_OPT_RHPORT 0
 

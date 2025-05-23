@@ -47,7 +47,7 @@
       "inherits": "default single"
     },
     {
-      "name": "alif_e7_dk_rtss_hp",
+      "name": "alif_e7_dk",
       "inherits": "default"
     },
     {
@@ -783,9 +783,9 @@
       "configurePreset": "adafruit_metro_esp32s2"
     },
     {
-      "name": "alif_e7_dk_rtss_hp",
+      "name": "alif_e7_dk",
       "description": "Build for Alif E7 DK RTSS HP Board",
-      "configurePreset": "alif_e7_dk_rtss_hp"
+      "configurePreset": "alif_e7_dk"
     },
       {
       "name": "apard32690",
