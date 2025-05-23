@@ -17,6 +17,7 @@
   #include <zephyr/kernel.h>
   #include <zephyr/cache.h>
   
+  #include <soc_common.h>
   #include <soc_memory_map.h>     // for local_to_global() function
     #define LOG_MEM_INFO(fmt, ...)  log_mem_append("[I] %s: " fmt "\n", __func__, ##__VA_ARGS__)
     #define LOG_MEM_ERROR(fmt, ...) log_mem_append("[E] %s: " fmt "\n", __func__, ##__VA_ARGS__)
@@ -38,7 +39,6 @@
   #include "platform_def.h"
   #include "dcd_ensemble.h"
 
-
   // Direct register access for compatibility
   #define XHC_REG_RD(addr)      sys_read32((addr))
   #define XHC_REG_WR(addr, val) sys_write32((val), (addr))
@@ -46,7 +46,6 @@
   // prototype for the functions
   bool RTSS_IsCacheClean_Required_by_Addr(volatile void *addr, int32_t size);
   static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t param);
-
 
 #else
   #include "clk.h"
