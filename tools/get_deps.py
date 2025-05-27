@@ -22,6 +22,9 @@ deps_mandatory = {
 # Optional Dependencies per MCU
 # path, url, commit, family (Alphabet sorted by path)
 deps_optional = {
+    'hw/mcu/alif': ['https://github.com/alifsemi/alif_ensemble-cmsis-dfp.git',
+                         '450314044646ad4b56c588b52b68eb6fe7d7caa7',
+                         'alif_e7_dk'],
     'hw/mcu/allwinner': ['https://github.com/hathach/allwinner_driver.git',
                          '8e5e89e8e132c0fd90e72d5422e5d3d68232b756',
                          'fc100s'],
@@ -203,7 +206,7 @@ deps_optional = {
                     'tm4c '],
     'lib/CMSIS_6': ['https://github.com/ARM-software/CMSIS_6.git',
                     'b0bbb0423b278ca632cfe1474eb227961d835fd2',
-                    'ra'],
+                    'ra alif_e7_dk'],
     'lib/sct_neopixel': ['https://github.com/gsteiert/sct_neopixel.git',
                          'e73e04ca63495672d955f9268e003cffe168fcd8',
                          'lpc55'],
