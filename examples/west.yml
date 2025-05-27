@@ -1,11 +1,11 @@
 manifest:
   remotes:
     - name: zephyrproject-rtos
-      url-base: https://github.com/zephyrproject-rtos
+      url-base: https://github.com/AlifSemi-Sirin
   projects:
-    - name: zephyr
+    - name: zephyr_alif_fork_4.1
       remote: zephyrproject-rtos
-      revision: main
+      revision: zas-v2.x-dev-mr
       path: zephyr
       import: true
   self:

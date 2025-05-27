@@ -1,0 +1,156 @@
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2019 Ha Thach (tinyusb.org)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * This file is part of the TinyUSB stack.
+ */
+
+/* metadata:
+   manufacturer: Nordic Semiconductor
+*/
+
+#include "M55_HP.h"
+
+#include "bsp/board_api.h"
+#include "board.h"
+
+
+// Suppress warning caused by mcu driver
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
+#pragma GCC diagnostic ignored "-Wcast-align"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wundef"
+#pragma GCC diagnostic ignored "-Wredundant-decls"
+#endif
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+
+//--------------------------------------------------------------------+
+// Forward USB interrupt events to TinyUSB IRQ Handler
+//--------------------------------------------------------------------+
+void USB_IRQHandler(void)
+{
+    dcd_int_handler(TUD_OPT_RHPORT);
+}
+
+/*------------------------------------------------------------------*/
+/* MACRO TYPEDEF CONSTANT ENUM
+ *------------------------------------------------------------------*/
+
+#define GPIO_OE_OFFSET        0x00  // Output Enable Register
+#define GPIO_VAL_OFFSET       0x04  // Output Value Register
+
+#define GPIO12_PORT                     12  /*< Use LED0_R,LED0_B GPIO port >*/
+#define GPIO7_PORT                      7   /*< Use LED0_G GPIO port >*/
+#define PIN3                            3   /*< LED0_R gpio pin >*/
+#define PIN4                            4   /*< LED0_G gpio pin >*/
+#define PIN0                            0   /*< LED0_B gpio pin >*/
+
+/* LED1 gpio pins */
+#define GPIO6_PORT                      6   /*< Use LED1_R,LED1_B,LED1_R GPIO port >*/
+#define PIN2                            2   /*< LED1_R gpio pin >*/
+#define PIN4                            4   /*< LED1_G gpio pin >*/
+#define PIN6                            6   /*< LED1_B gpio pin >*/
+
+#define REG32(addr)           (*(volatile uint32_t *)(addr))
+
+#define USB_CTRL_BASE   0x48200000
+#define USB_ALIF_IRQ    101
+
+//--------------------------------------------------------------------+
+//
+//--------------------------------------------------------------------+
+
+static void pin_set_value(const uint8_t pin, const bool value)
+{
+    // Enable output for the pin
+    REG32(GPIO0_BASE + GPIO_OE_OFFSET) |= (1U << pin);
+
+    if (value) {
+        // Set pin high
+        REG32(GPIO0_BASE + GPIO_VAL_OFFSET) |= (1U << pin);
+    } else {
+        // Set pin low
+        REG32(GPIO0_BASE + GPIO_VAL_OFFSET) &= ~(1U << pin);
+    }
+}
+
+static void pin_set(const uint8_t port, const uint8_t pin, const uint8_t alt_func, const uint8_t pad_ctrl)
+{
+    uint32_t offset;
+    offset = (uint32_t) ((port << 5) + (pin << 2));
+    *((volatile uint32_t *) (PINMUX_BASE + offset)) = ((uint32_t) pad_ctrl << 16) | alt_func;
+}
+
+void board_init(void) {
+    pin_set(GPIO12_PORT, PIN3, 0, 0);
+    pin_set(GPIO7_PORT, PIN4, 0, 0);
+    pin_set(GPIO12_PORT, PIN0, 0, 0);
+    pin_set(GPIO6_PORT, PIN2, 0, 0);
+    pin_set(GPIO6_PORT, PIN4, 0, 0);
+    pin_set(GPIO6_PORT, PIN6, 0, 0);
+
+    board_led_write(true);
+
+    IRQ_CONNECT(USB_ALIF_IRQ, 5, USB_IRQHandler, NULL, 0);
+}
+
+//--------------------------------------------------------------------+
+// Board porting API
+//--------------------------------------------------------------------+
+void board_led_write(bool state) {
+    (void) state;
+
+    pin_set_value(PIN3, state);
+    pin_set_value(PIN4, state);
+    pin_set_value(PIN0, state);
+    pin_set_value(PIN2, state);
+    pin_set_value(PIN4, state);
+    pin_set_value(PIN6, state);
+
+}
+
+uint32_t board_button_read(void) {
+
+}
+
+size_t board_get_unique_id(uint8_t id[], size_t max_len) {
+  (void) max_len;
+  (void) id;
+  return 8;
+}
+
+int board_uart_read(uint8_t* buf, int len) {
+  (void) buf;
+  (void) len;
+  return 0;
+}
+
+int board_uart_write(void const* buf, int len) {
+  (void) buf;
+  (void) len;
+}
