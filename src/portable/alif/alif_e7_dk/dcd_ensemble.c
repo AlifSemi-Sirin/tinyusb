@@ -21,12 +21,15 @@
   #include <soc_memory_map.h>     // for local_to_global() function
     #define LOG_MEM_INFO(fmt, ...)  log_mem_append("[I] %s: " fmt "\n", __func__, ##__VA_ARGS__)
     #define LOG_MEM_ERROR(fmt, ...) log_mem_append("[E] %s: " fmt "\n", __func__, ##__VA_ARGS__)
+    #define LOG_MEM_SHORT(fmt, ...) log_mem_append(fmt "\n", ##__VA_ARGS__)
 
     #define LOG_PRINT_INFO(fmt, ...)  printf("[%lld ms] INFO  %s: " fmt "\n", k_uptime_get(), __func__, ##__VA_ARGS__)
     #define LOG_PRINT_ERROR(fmt, ...) printf("[%lld ms] ERROR %s: " fmt "\n", k_uptime_get(), __func__, ##__VA_ARGS__)
+    #define LOG_PRINT_SHORT(fmt, ...) printf( fmt "\n", ##__VA_ARGS__)
 
     #define LOG_ALIF_INFO  LOG_MEM_INFO
     #define LOG_ALIF_ERROR LOG_MEM_ERROR
+    #define LOG_ALIF_SHORT LOG_MEM_SHORT
         
     #define LOG_ALIF_HEXDUMP log_buffer_hex
 
@@ -127,7 +130,7 @@ __aligned(32) CFG_TUSB_MEM_SECTION static uint32_t _xfer_trb[MAX_TRB_NUM][4];   
 bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) 
 {
     (void) rh_init;
-
+    
     init_log_mem();
     flush_prev_session_log();
 
@@ -186,7 +189,7 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
 
     // allocate ring buffer for events
     memset(_evnt_buf, 0, sizeof(_evnt_buf));
-    RTSS_CleanDCache_by_Addr((uint32_t *)_evnt_buf, sizeof(_evnt_buf));
+    sys_cache_data_flush_range(_evnt_buf, sizeof(_evnt_buf)); // zephyr equ for RTSS_CleanDCache_by_Addr(..)
     _evnt_tail = _evnt_buf;
 
 	XHC_REG_WR(GEVNTADDRL0_REG, (uint32_t)local_to_global(_evnt_buf));
@@ -361,6 +364,7 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
     LOG_ALIF_INFO("-->>");  
      // [TODO] clear all xfers and eps first
     sys_clear_bits(DCTL_REG, DCTL_RUN_STOP);
+
      (void) rhport;
  }
  
@@ -376,7 +380,7 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
  // May help DCD to prepare for next control transfer, this API is optional.
  void dcd_edpt0_status_complete(uint8_t rhport, tusb_control_request_t const * request)
  {
-    LOG_ALIF_INFO("%010u >%s", DWT->CYCCNT, __func__);
+    // LOG_ALIF_INFO("%010u >%s", DWT->CYCCNT, __func__);
  
      _ctrl_long_data = false;
      _dcd_start_xfer(TUSB_DIR_OUT, _ctrl_buf, 8, TRBCTL_CTL_SETUP);
@@ -391,9 +395,7 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
  // Also make sure to enable endpoint specific interrupts.
  bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
  {
-    LOG_ALIF_INFO("%010u >%s %u %s %u %u", DWT->CYCCNT, __func__, desc_ep->bEndpointAddress,
-         desc_ep->bmAttributes.xfer == TUSB_XFER_BULK ? "bulk" : "int",
-         desc_ep->wMaxPacketSize, desc_ep->bInterval);
+    LOG_ALIF_INFO("-->>");
  
      if (TUSB_XFER_ISOCHRONOUS == desc_ep->bmAttributes.xfer)
          return false;
@@ -458,10 +460,8 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
 bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t total_bytes)
 {
     (void) rhport;
-    LOG_ALIF_INFO("ep_addr=%u buf=%p len=%u",
-            ep_addr, (void*)buffer, total_bytes);
+    
     // LOG_ALIF_HEXDUMP(buffer, total_bytes);
-
     // Compute physical endpoint index: (number << 1) | dir
     uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
 
@@ -472,6 +472,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                 _xfer_bytes[ep] = total_bytes;
                 // TRBCTL_CTL_STAT3: DATA stage for control OUT
                 _dcd_start_xfer(ep, buffer, total_bytes, TRBCTL_CTL_STAT3);
+                LOG_ALIF_SHORT("-> ep0Rx len=%u", total_bytes);
             } else {
                 // STATUS OUT stage: after DATA IN
                 if (++_sts_stage == 2) {
@@ -481,6 +482,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                                              0,
                                              XFER_RESULT_SUCCESS,
                                              true);
+                    LOG_ALIF_SHORT("-> ep0Rx done");
                 }
             }
         } break;
@@ -491,6 +493,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
             if (total_bytes > 0) {
                 // DATA IN stage
                 RTSS_CleanDCache_by_Addr(buffer, total_bytes);
+                sys_cache_data_flush_range(buffer, total_bytes); // zephyr equ for RTSS_CleanDCache_by_Addr(..)
                 // choose TRB type based on long-data flag
                 uint8_t trb_type = _ctrl_long_data ? TRBCTL_NORMAL : TRBCTL_CTL_DATA;
                 if (total_bytes == 64) {
@@ -498,6 +501,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                     _ctrl_long_data = true;
                 }
                 _dcd_start_xfer(ep, buffer, total_bytes, trb_type);
+                LOG_ALIF_SHORT("-> ep0Tx len=%u", total_bytes);
             } else {
                 // STATUS IN stage
                 if (++_sts_stage == 2) {
@@ -507,15 +511,18 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                                              0,
                                              XFER_RESULT_SUCCESS,
                                              true);
+                    LOG_ALIF_SHORT("-> ep0Tx done");
                 }
             }
         } break;
 
         default: {  // BULK & INTERRUPT endpoints
+            LOG_ALIF_SHORT("-> epXX");
+            // LOG_ALIF_SHORT("-> ep=%u len=%u", ep, total_bytes);
             _xfer_bytes[ep] = total_bytes;
             if (tu_edpt_dir(ep_addr) == TUSB_DIR_IN) {
                 // cache clean before IN transfer
-                RTSS_CleanDCache_by_Addr(buffer, total_bytes);
+                sys_cache_data_flush_range(buffer, total_bytes); // zephyr equ for RTSS_CleanDCache_by_Addr(..)
             } else {
                 // for OUT endpoints controller may require full-size requests
                 // you can adjust this if needed or remove hack
@@ -528,7 +535,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                                              buffer,
                                              total_bytes,
                                              total_bytes ? TRBCTL_NORMAL : TRBCTL_NORMAL_ZLP);
-            LOG_ALIF_INFO("start xfer returned %u", result);
+            // LOG_ALIF_INFO("start xfer returned %u", result);
         }
     }
 
@@ -588,7 +595,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
  
      switch (evt) {
          case DEPEVT_XFERCOMPLETE: {
-             LOG_ALIF_INFO("Transfer complete");
+            //  LOG_ALIF_INFO("Transfer complete");
              sys_cache_data_invd_range(_xfer_trb[ep], sizeof(_xfer_trb[0]));// zephyr equ for RTSS_InvalidateDCache_by_Addr(..)
              if (0 == ep) {
                  uint8_t trbctl = (_xfer_trb[0][3] >> 4) & 0x3F;
@@ -596,7 +603,6 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                      sys_cache_data_invd_range(_ctrl_buf, sizeof(_ctrl_buf));
 
                     //  LOG_ALIF_HEXDUMP(_ctrl_buf, 8);
-
                      dcd_event_setup_received(TUD_OPT_RHPORT, _ctrl_buf, true);
                  } else if (TRBCTL_CTL_STAT3 == trbctl) {
                      if (0 < _xfer_bytes[0]) {
@@ -604,11 +610,14 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                          dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_OUT),
                                                  _xfer_bytes[0] - (_xfer_trb[0][2] & 0xFFFFFF),
                                                  XFER_RESULT_SUCCESS, true);
+                        LOG_ALIF_SHORT("ep0rx done (%u b)", 
+                                       _xfer_bytes[0] - (_xfer_trb[0][2] & 0xFFFFFF));
                      } else {
                          if (2 == ++_sts_stage) {
                              _sts_stage = 0;
                              dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_OUT),
                                                      0, XFER_RESULT_SUCCESS, true);
+                            LOG_ALIF_SHORT("ep0rx done (%u b)", 0);
  
                              // *(volatile uint32_t*) 0x4900C000 ^= 8; // [TEMP]
                          }
@@ -619,23 +628,27 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                  }
              } else if (1 == ep) {
                  uint8_t trbctl = (_xfer_trb[1][3] >> 4) & 0x3F;
-                 LOG_ALIF_INFO("ep1 xfer trb3 = %08x trb2 = %08x", _xfer_trb[1][3], _xfer_trb[1][2]);
+                //  LOG_ALIF_INFO("ep1 xfer trb3 = %08x trb2 = %08x", _xfer_trb[1][3], _xfer_trb[1][2]);
                  if (TRBCTL_CTL_STAT2 != trbctl) { // STATUS IN notification is done at xfer request
                      dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_IN),
                                              _xfer_bytes[1] - (_xfer_trb[1][2] & 0xFFFFFF),
                                              XFER_RESULT_SUCCESS, true);
+                        LOG_ALIF_SHORT("ep0tx done (%u b)", 
+                                       _xfer_bytes[1] - (_xfer_trb[1][2] & 0xFFFFFF));
+                        
                  } else {
                      if (2 == ++_sts_stage) {
                          _sts_stage = 0;
                          dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_IN),
                                                  0, XFER_RESULT_SUCCESS, true);
+                        LOG_ALIF_SHORT("ep0tx done (%u b)", 0);
  
                          // *(volatile uint32_t*) 0x4900C000 ^= 8; // [TEMP]
                      }
                  }
              } else {
                  // [TODO] check if ep is open
-                 LOG_ALIF_INFO("ep%u xfer trb3 = %08x trb2 = %08x", ep, _xfer_trb[ep][3], _xfer_trb[ep][2]);
+                //  LOG_ALIF_INFO("ep%u xfer trb3 = %08x trb2 = %08x", ep, _xfer_trb[ep][3], _xfer_trb[ep][2]);
                  
                  if (TUSB_DIR_OUT == tu_edpt_dir(tu_edpt_addr(ep >> 1, ep & 1))) {
                      sys_cache_data_invd_range((void*) _xfer_trb[ep][0],
@@ -644,10 +657,14 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                  dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep >> 1, ep & 1),
                                          512 - _xfer_trb[ep][2],
                                          XFER_RESULT_SUCCESS, true);
+                    LOG_ALIF_SHORT("ep%uRx done (%u b)", ep >> 1,
+                                   512 - _xfer_trb[ep][2]); 
                  } else
                  dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep >> 1, ep & 1),
                                          _xfer_bytes[ep] - _xfer_trb[ep][2],
                                          XFER_RESULT_SUCCESS, true);
+                    LOG_ALIF_SHORT("ep%uTx done (%u b)", ep >> 1,
+                                   _xfer_bytes[ep] - _xfer_trb[ep][2]);
 
              }
          } break;
@@ -655,7 +672,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
             LOG_ALIF_INFO("Transfer in progress");
          } break;
          case DEPEVT_XFERNOTREADY: {
-            LOG_ALIF_INFO("Transfer not ready: %s", sts & 8 ? "no TRB" : "no XFER");
+            // LOG_ALIF_INFO("Transfer not ready: %s", sts & 8 ? "no TRB" : "no XFER");
  
              // XferNotReady NotActive for status stage
              if ((1 == ep) && (0b0010 == (sts & 0b1011))) {
@@ -679,7 +696,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                      // reset the trb byte count and clean the cache
                      sys_cache_data_invd_range(_xfer_trb[ep], sizeof(_xfer_trb[0]));
                      _xfer_trb[ep][2] = _xfer_bytes[ep];
-                     RTSS_CleanDCache_by_Addr(_xfer_trb[ep], sizeof(_xfer_trb[ep]));
+                     sys_cache_data_flush_range(_xfer_trb[ep], sizeof(_xfer_trb[0])); // zephyr equ for RTSS_CleanDCache_by_Addr(..)
  
                      // prepare ep command
                     XHC_REG_WR(DEPCMDPAR1N(ep), (uint32_t)local_to_global(_xfer_trb[ep]));
@@ -708,13 +725,13 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
  
              // [TODO] issue depcstall for any ep in stall mode
             sys_clear_bits(DCFG_REG, DCFG_DEVADDR_MASK); // reset address
-             LOG_ALIF_INFO("USB reset");
+            //  LOG_ALIF_INFO("USB reset");
              dcd_event_bus_reset(TUD_OPT_RHPORT, TUSB_SPEED_HIGH, true); // [TODO] actual speed
          } break;
          case DEVT_CONNECTDONE: {
              // read conn speed from dsts
              // program ramclksel in gctl if needed
-             LOG_ALIF_INFO("Connect done");
+            //  LOG_ALIF_INFO("Connect done");
  
             uint8_t ep_idx = 0;
             XHC_REG_WR(DEPCMDPAR1N(ep_idx), (0 << 25) | (1 << 10) | (1 << 8));
@@ -731,7 +748,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
 	        }
          } break;
          case DEVT_ULSTCHNG: {
-            LOG_ALIF_INFO("Link status change");
+            // LOG_ALIF_INFO("Link status change");
              switch (info) {
                  case 0x3: { // suspend (L2)
                      dcd_event_bus_signal(TUD_OPT_RHPORT, DCD_EVENT_SUSPEND, true);
@@ -775,7 +792,7 @@ static uint8_t _dcd_start_xfer(uint8_t ep, void *buf, uint32_t size, uint8_t typ
         LOG_ALIF_ERROR("Invalid ep %u", ep);
         return 1;
     }
-    // LOG_ALIF_INFO("-->>");
+    // LOG_ALIF_INFO("-->> ep=%u, size=%u, type=%u", ep, size, type);
 
     /* Prevent races between programming TRB and ISR handling */
     sb_dc_alif_int_disable();  
@@ -791,7 +808,7 @@ static uint8_t _dcd_start_xfer(uint8_t ep, void *buf, uint32_t size, uint8_t typ
                     | (1U << 0);    // Hardware Owner of Descriptor (HWO)
 
     /* Clean D-cache so USB controller sees updated TRB */
-    RTSS_CleanDCache_by_Addr(_xfer_trb[ep], sizeof(_xfer_trb[ep]));  
+    sys_cache_data_flush_range(_xfer_trb[ep], sizeof(_xfer_trb[0])); // zephyr equ for RTSS_CleanDCache_by_Addr(..) 
 
 	// EP command
 	XHC_REG_WR(DEPCMDPAR1N(ep), (uint32_t)local_to_global(_xfer_trb[ep]));
@@ -872,7 +889,7 @@ static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t pa
 
 	// Wait for command completion
 	while (XHC_REG_RD(DEPCMDN(ep)) & DEPCMD_CMDACT) {
-        // k_busy_wait(1);
+        k_busy_wait(2);
 	}
 
 	// Restore PHY configuration
@@ -920,18 +937,25 @@ __attribute__((section(".noinit"))) static uint32_t log_mem_magic;
 static void init_log_mem(void)
 {
     if (log_mem_magic != LOG_MEM_MAGIC) {
+        printf("Log broken (%x/%p)/%x, reinitializing\n",
+               log_mem_magic, &log_mem_magic,
+               LOG_MEM_MAGIC);  
         log_mem_pos    = 0;
         log_mem_magic  = LOG_MEM_MAGIC;
+    }
+    else {
+        printf("Log OK, continuing\n");
     }
 }
 static void log_mem_append(const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    // оставляем 1 байт под '\0'
+    
     int rem = LOG_MEM_SIZE - log_mem_pos - 1;
     if (rem <= 0) {
         va_end(ap);
+         printf("wrErr!\n");
         return; // buffer overflow
     }
 
@@ -947,7 +971,10 @@ void flush_prev_session_log(void)
 {
     if (log_mem_pos > LOG_MEM_SIZE) {
         log_mem_pos = LOG_MEM_SIZE;
+        printf("Log buffer overflow, truncating\n");
     }
+
+    printf("Flushing previous USB-log session (%zu bytes)\n", log_mem_pos);
 
     if (log_mem_pos > 0) {
         /* Print the log buffer */
