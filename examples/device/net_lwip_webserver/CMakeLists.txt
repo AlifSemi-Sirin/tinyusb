@@ -23,16 +23,21 @@ project(${PROJECT} C CXX ASM)
 # Checks this example is valid for the family and initializes the project
 family_initialize_project(${PROJECT} ${CMAKE_CURRENT_LIST_DIR})
 
-add_executable(${PROJECT})
+if (RTOS STREQUAL zephyr)
+  set(EXE_NAME app)
+else()
+  set(EXE_NAME ${PROJECT})
+  add_executable(${EXE_NAME})
+endif()
 
 # Example source
-target_sources(${PROJECT} PUBLIC
+target_sources(${EXE_NAME} PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/src/main.c
   ${CMAKE_CURRENT_LIST_DIR}/src/usb_descriptors.c
   )
 
 # Example include
-target_include_directories(${PROJECT} PUBLIC
+target_include_directories(${EXE_NAME} PUBLIC
   ${CMAKE_CURRENT_LIST_DIR}/src
   ${LWIP}/src/include
   ${LWIP}/src/include/ipv4
@@ -41,14 +46,14 @@ target_include_directories(${PROJECT} PUBLIC
   )
 
 # lib/networking sources
-target_sources(${PROJECT} PUBLIC
+target_sources(${EXE_NAME} PRIVATE
   ${TOP}/lib/networking/dhserver.c
   ${TOP}/lib/networking/dnserver.c
   ${TOP}/lib/networking/rndis_reports.c
   )
 
 # lwip sources
-target_sources(${PROJECT} PUBLIC
+target_sources(${EXE_NAME} PRIVATE
   ${LWIP}/src/core/altcp.c
   ${LWIP}/src/core/altcp_alloc.c
   ${LWIP}/src/core/altcp_tcp.c
@@ -86,7 +91,7 @@ target_sources(${PROJECT} PUBLIC
 
 # due to warnings from other net source, we need to prevent error from some of the warnings options
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-  target_compile_options(${PROJECT} PUBLIC
+  target_compile_options(${EXE_NAME} PUBLIC
     -Wno-error=null-dereference
     -Wno-error=conversion
     -Wno-error=sign-conversion
@@ -98,4 +103,4 @@ endif ()
 
 # Configure compilation flags and libraries for the example without RTOS.
 # See the corresponding function in hw/bsp/FAMILY/family.cmake for details.
-family_configure_device_example(${PROJECT} noos)
+family_configure_device_example(${EXE_NAME} ${RTOS})
