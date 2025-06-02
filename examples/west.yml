@@ -10,7 +10,7 @@ manifest:
   projects:
     - name: zephyr
       repo-path: zephyr_alif_fork_4.1.git
-      revision: zas-v2.x-dev-mr
+      revision: tusb-porting
       import: true
 
   self:
