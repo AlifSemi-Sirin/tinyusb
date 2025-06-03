@@ -264,7 +264,7 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
     _xfer_trb[ep][1] = 0;
     _xfer_trb[ep][2] = 8;
     _xfer_trb[ep][3] = (1 << 11) | (1 << 10) | (TRBCTL_CTL_SETUP << 4) | (1 << 1) | (1 << 0);
-    RTSS_CleanDCache_by_Addr(_xfer_trb[ep], sizeof(_xfer_trb[ep]));
+    sys_cache_data_flush_range(_xfer_trb[ep], sizeof(_xfer_trb[ep]));
 
     // send trb to the usb dma
     XHC_REG_WR(DEPCMDPAR1N(ep), (uint32_t)local_to_global(_xfer_trb[ep]));
@@ -304,7 +304,6 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
      // cycle through event queue
      // evaluate on every iteration to prevent unnecessary isr exit/reentry
     while (XHC_REG_RD(GEVNTCOUNT0_REG) & GEVNTCOUNT0_EVNTCOUNT_MASK)  {
-        //  RTSS_InvalidateDCache_by_Addr(_evnt_buf, sizeof(_evnt_buf));
          sys_cache_data_invd_range(_evnt_buf, sizeof(_evnt_buf)); // zephyr equ for RTSS_InvalidateDCache_by_Addr(..)
          volatile evt_t e = {.val = *_evnt_tail++};
         //  LOG_ALIF_INFO("%010u IRQ loop, evnt %08x", DWT->CYCCNT, e.val);
@@ -512,7 +511,6 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
 
             if (total_bytes > 0) {
                 // DATA IN stage
-                RTSS_CleanDCache_by_Addr(buffer, total_bytes);
                 sys_cache_data_flush_range(buffer, total_bytes); // zephyr equ for RTSS_CleanDCache_by_Addr(..)
                 // choose TRB type based on long-data flag
                 uint8_t trb_type = _ctrl_long_data ? TRBCTL_NORMAL : TRBCTL_CTL_DATA;
