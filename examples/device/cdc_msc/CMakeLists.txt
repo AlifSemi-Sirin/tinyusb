@@ -30,6 +30,14 @@ target_sources(${EXE_NAME} PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/usb_descriptors.c
   )
 
+target_compile_definitions(
+    ${EXE_NAME} PRIVATE
+    CFG_TUSB_MCU=OPT_MCU_NONE
+    CFG_TUSB_RHPORT0_MODE=OPT_MODE_DEVICE
+    TUP_DCD_ENDPOINT_MAX=8
+    TUD_OPT_RHPORT=0
+)  
+
 # Example include
 target_include_directories(${EXE_NAME} PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/src
