@@ -68,12 +68,18 @@ function(add_board_target BOARD_TARGET)
   update_board(${BOARD_TARGET})
 
   if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    message(STATUS "Defining Linker options")
     target_link_options(${BOARD_TARGET} PUBLIC
       "LINKER:--script=${LD_FILE_GNU}"
-      --specs=nosys.specs --specs=nano.specs
+      --specs=nosys.specs
       -Wl,-Map=linker.map,--cref,-print-memory-usage,--gc-sections,--no-warn-rwx-segments
-      -nostartfiles
-      )
+    )
+    target_link_libraries(${BOARD_TARGET} PUBLIC
+      m c gcc
+    )
+    target_compile_options(${BOARD_TARGET} PUBLIC
+      -fdata-sections -ffunction-sections -Wno-undef
+    )
   endif ()
 endfunction()
 
