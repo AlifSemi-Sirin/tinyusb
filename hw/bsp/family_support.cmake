@@ -85,21 +85,8 @@ endif()
 #----------------------------------
 if (RTOS STREQUAL zephyr)
   set(BOARD_ROOT ${TOP}/hw/bsp/${FAMILY})
-
-  message(STATUS "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-  message(STATUS "TOP: ${TOP}")
-  message(STATUS "BOARD_PATH: ${BOARD_PATH}")
-  message(STATUS "BOARD_ROOT: ${BOARD_ROOT}")
-  message(STATUS "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-
   set(ZEPHYR_BOARD_ALIASES ${CMAKE_CURRENT_LIST_DIR}/zephyr_board_aliases.cmake)
   find_package(Zephyr REQUIRED HINTS ${TOP}/zephyr)
-
-  message(STATUS "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-  message(STATUS "BOARD_ROOT: ${BOARD_ROOT}")
-  message(STATUS "ZEPHYR_BOARD_ALIASES: ${ZEPHYR_BOARD_ALIASES}")
-  message(STATUS "Zephyr_DIR: ${TOP}/zephyr")
-  message(STATUS "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 endif ()
 
 #-------------------------------------------------------------

@@ -182,6 +182,7 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
 // from host... It will be called by application in the MCU USB interrupt handler.
 void dcd_int_handler(uint8_t rhport)
 {
+    (void) rhport;
     LOG("%010u IRQ enter, evntcount %u", DWT->CYCCNT, ugbl->gevntcount0_b.evntcount);
 
     // process failures first
@@ -259,6 +260,7 @@ void dcd_set_address(uint8_t rhport, uint8_t dev_addr)
 // Called to remote wake up host when suspended (e.g hid keyboard)
 void dcd_remote_wakeup(uint8_t rhport)
 {
+    (void) rhport;
     LOG("%010u >%s", DWT->CYCCNT, __func__);
 }
 
@@ -283,6 +285,8 @@ void dcd_disconnect(uint8_t rhport)
 // Enable/Disable Start-of-frame interrupt. Default is disabled
 void dcd_sof_enable(uint8_t rhport, bool en)
 {
+    (void) rhport;
+    (void) en;
     LOG("%010u >%s", DWT->CYCCNT, __func__);
 }
 
@@ -293,6 +297,8 @@ void dcd_sof_enable(uint8_t rhport, bool en)
 // May help DCD to prepare for next control transfer, this API is optional.
 void dcd_edpt0_status_complete(uint8_t rhport, tusb_control_request_t const * request)
 {
+    (void) rhport;
+    (void) request;
     LOG("%010u >%s", DWT->CYCCNT, __func__);
 
     _ctrl_long_data = false;
@@ -308,6 +314,7 @@ void dcd_edpt0_status_complete(uint8_t rhport, tusb_control_request_t const * re
 // Also make sure to enable endpoint specific interrupts.
 bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
 {
+    (void) rhport;
     LOG("%010u >%s %u %s %u %u", DWT->CYCCNT, __func__, desc_ep->bEndpointAddress,
         desc_ep->bmAttributes.xfer == TUSB_XFER_BULK ? "bulk" : "int",
         desc_ep->wMaxPacketSize, desc_ep->bInterval);
@@ -349,6 +356,7 @@ bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
 // required for multiple configuration support.
 void dcd_edpt_close_all(uint8_t rhport)
 {
+    (void) rhport;
     LOG("%010u >%s", DWT->CYCCNT, __func__);
 }
 
@@ -358,12 +366,16 @@ void dcd_edpt_close_all(uint8_t rhport)
 // progress through this endpoint, before returning.
 // Implementation is optional. Must be called from the USB task.
 // Interrupts could be disabled or enabled during the call.
-void dcd_edpt_close(uint8_t rhport, uint8_t ep_addr) TU_ATTR_WEAK;
+TU_ATTR_WEAK void dcd_edpt_close(uint8_t rhport, uint8_t ep_addr) {
+    (void) rhport;
+    (void) ep_addr;
+}
 
 // Submit a transfer, When complete dcd_event_xfer_complete() is invoked to
 // notify the stack
 bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t total_bytes)
 {
+    (void) rhport;
     // DEPSTRTXFER command
     LOG("%010u >%s %u %x %u", DWT->CYCCNT, __func__, ep_addr, (uint32_t) buffer, total_bytes);
 
@@ -426,11 +438,18 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t t
 
 // Submit a transfer using fifo, When complete dcd_event_xfer_complete() is invoked to notify the stack
 // This API is optional, may be useful for register-based for transferring data.
-bool dcd_edpt_xfer_fifo(uint8_t rhport, uint8_t ep_addr, tu_fifo_t * ff, uint16_t total_bytes) TU_ATTR_WEAK;
+TU_ATTR_WEAK bool dcd_edpt_xfer_fifo(uint8_t rhport, uint8_t ep_addr, tu_fifo_t * ff, uint16_t total_bytes) {
+    (void) rhport;
+    (void) ep_addr;
+    (void) ff;
+    (void) total_bytes;
+    return true;
+}
 
 // Stall endpoint, any queuing transfer should be removed from endpoint
 void dcd_edpt_stall(uint8_t rhport, uint8_t ep_addr)
 {
+    (void) rhport;
     // DEPSSTALL command
     LOG(">%s", __func__);
 
@@ -449,6 +468,7 @@ void dcd_edpt_stall(uint8_t rhport, uint8_t ep_addr)
 // receiving setup packet
 void dcd_edpt_clear_stall(uint8_t rhport, uint8_t ep_addr)
 {
+    (void) rhport;
     // DEPCSTALL command
     LOG(">%s", __func__);
 
@@ -496,6 +516,7 @@ static uint8_t _dcd_cmd_wait(uint8_t ep, uint8_t typ, uint16_t param)
 
 static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par)
 {
+    (void) par;
     LOG("%010u DEPEVT ep%u evt%u sts%u par%u", DWT->CYCCNT, ep, evt, sts, par);
 
     switch (evt) {

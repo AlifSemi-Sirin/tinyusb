@@ -3,10 +3,6 @@ include_guard()
 set(ALIF_CMSIS ${TOP}/hw/mcu/alif)
 set(CMSIS_DIR ${TOP}/lib/CMSIS_6)
 
-message(STATUS "TOP: ${TOP}")
-message(STATUS "ALIF_CMSIS: ${ALIF_CMSIS}")
-message(STATUS "CMSIS_DIR: ${CMSIS_DIR}")
-
 # include board specific, for zephyr BOARD_ALIAS may be used instead
 include(${CMAKE_CURRENT_LIST_DIR}/boards/${BOARD}/board.cmake OPTIONAL RESULT_VARIABLE board_cmake_included)
 message(STATUS "Trying to include board: ${BOARD}, success: ${board_cmake_included}")
@@ -44,16 +40,16 @@ function(add_board_target BOARD_TARGET)
     ${ALIF_CMSIS}/Device/common/source/mpu_M55.c
     ${ALIF_CMSIS}/Device/common/source/tcm_partition.c
     ${ALIF_CMSIS}/Device/common/source/tgu_M55.c
+    ${ALIF_CMSIS}/Alif_CMSIS/Source/Driver_GPIO.c
+    ${ALIF_CMSIS}/drivers/source/pinconf.c
+    ${ALIF_CMSIS}/Alif_CMSIS/Source/Driver_USART.c
+    ${ALIF_CMSIS}/drivers/source/uart.c
     ${STARTUP_FILE_${CMAKE_C_COMPILER_ID}}
-  )
-
-
-  message(STATUS "============================================================")
-  message(STATUS "${ALIF_CMSIS}/Device/core/${MCU_VARIANT}")
-  message(STATUS "${ALIF_CMSIS}/Device/core/${MCU_VARIANT}/source/startup_${MCU_VARIANT}.c")
-  message(STATUS "============================================================")
+    )
 
   target_include_directories(${BOARD_TARGET} PUBLIC
+    ${ALIF_CMSIS}/Alif_CMSIS/include
+    ${ALIF_CMSIS}/drivers/include
     ${ALIF_CMSIS}/Device/common/config
     ${ALIF_CMSIS}/Device/common/include
     ${ALIF_CMSIS}/Device/E7/AE722F80F55D5XX
@@ -63,18 +59,29 @@ function(add_board_target BOARD_TARGET)
     ${ALIF_CMSIS}/drivers/include
     ${ALIF_CMSIS}/Alif_CMSIS/include
     ${CMSIS_DIR}/CMSIS/Core/Include
+    ${TOP}/hw/bsp/alif/boards/alif_e7_dk/
     )
 
   update_board(${BOARD_TARGET})
 
   if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    message(STATUS "Defining Linker options")
+
     target_link_options(${BOARD_TARGET} PUBLIC
       "LINKER:--script=${LD_FILE_GNU}"
-      --specs=nosys.specs --specs=nano.specs
+      --specs=nosys.specs
       -Wl,-Map=linker.map,--cref,-print-memory-usage,--gc-sections,--no-warn-rwx-segments
-      -nostartfiles
+      )
+
+    target_link_libraries(${BOARD_TARGET} PUBLIC
+      -lm -lc -lgcc
+      )
+
+    target_compile_options(${BOARD_TARGET} PUBLIC
+      -Wno-undef -Wno-strict-prototypes
       )
   endif ()
+
 endfunction()
 
 
@@ -91,7 +98,17 @@ function(family_configure_example TARGET RTOS)
     CFG_TUSB_RHPORT0_MODE=OPT_MODE_DEVICE
     TUP_DCD_ENDPOINT_MAX=8
     TUD_OPT_RHPORT=0
-  )
+    BOARD_TUD_MAX_SPEED=OPT_MODE_HIGH_SPEED
+    CFG_TUSB_MEM_ALIGN=TU_ATTR_ALIGNED\(32\)
+    CFG_TUSB_MEM_SECTION=__attribute__\(\(section\(\"usb_dma_buf\"\)\)\)
+    BOARD_ALIF_DEVKIT_VARIANT=4
+    UNICODE
+    _UNICODE
+    CORE_M55_HP
+    _DEBUG
+    M55_HP
+    _RTE_
+    )
 
   family_configure_common(${TARGET} ${RTOS})
 
@@ -118,7 +135,7 @@ function(family_configure_example TARGET RTOS)
   family_add_tinyusb(${TARGET} OPT_MCU_NONE)
   target_sources(${TARGET} PRIVATE
     ${TOP}/src/portable/alif/alif_e7_dk/dcd_ensemble.c
-  )
+    )
 
   if(CORE_M55_HP)
     target_compile_definitions(${TARGET} PUBLIC CORE_M55_HP)
@@ -133,5 +150,15 @@ function(family_configure_example TARGET RTOS)
     add_compile_definitions(M55_HE)
     message(STATUS "CORE_M55_HE is defined and added")
   endif()
+
+  # Workaround for Ensemble
+  # Remove -ffunction-sections from global flags for all relevant languages
+  foreach(var CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_ASM_FLAGS)
+    if(${var} MATCHES "-ffunction-sections")
+      string(REPLACE "-ffunction-sections" "" new_flags "${${var}}")
+      set(${var} "${new_flags}" CACHE STRING "Remove -ffunction-sections" FORCE)
+      message(STATUS "Patched ${var} = ${${var}}")
+    endif()
+  endforeach()
 
 endfunction()

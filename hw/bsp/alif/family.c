@@ -33,32 +33,8 @@
 #include "bsp/board_api.h"
 #include "board.h"
 
-
-// Suppress warning caused by mcu driver
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcast-qual"
-#pragma GCC diagnostic ignored "-Wcast-align"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#pragma GCC diagnostic ignored "-Wundef"
-#pragma GCC diagnostic ignored "-Wredundant-decls"
-#endif
-
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
-
-#ifndef __ICCARM__
-// Implement _start() since we use linker flag '-nostartfiles'.
-// Requires defined __STARTUP_CLEAR_BSS,
-extern int main(void);
-TU_ATTR_UNUSED void _start(void) {
-  // called by startup code
-  main();
-  while (1) {}
-}
-#endif
+void SysTick_Handler(void);
+void USB_IRQHandler(void);
 
 //--------------------------------------------------------------------+
 // Forward USB interrupt events to TinyUSB IRQ Handler
@@ -118,6 +94,10 @@ static void pin_set(const uint8_t port, const uint8_t pin, const uint8_t alt_fun
 }
 
 void board_init(void) {
+
+    *(volatile uint32_t*) 0x4900C004 |= 8; // 12_0 + 12_3 as output (blue + red LED)
+    *(volatile uint32_t*) 0x49007004 |= 16; // 7_4 as output (green LED)
+
     pin_set(GPIO12_PORT, PIN3, 0, 0);
     pin_set(GPIO7_PORT, PIN4, 0, 0);
     pin_set(GPIO12_PORT, PIN0, 0, 0);
@@ -144,11 +124,10 @@ void board_led_write(bool state) {
     pin_set_value(PIN2, state);
     pin_set_value(PIN4, state);
     pin_set_value(PIN6, state);
-
 }
 
 uint32_t board_button_read(void) {
-
+    return 1;
 }
 
 size_t board_get_unique_id(uint8_t id[], size_t max_len) {
@@ -166,6 +145,7 @@ int board_uart_read(uint8_t* buf, int len) {
 int board_uart_write(void const* buf, int len) {
   (void) buf;
   (void) len;
+  return 1;
 }
 
 #if CFG_TUSB_OS == OPT_OS_NONE
@@ -179,3 +159,27 @@ uint32_t board_millis(void) {
   return system_ticks;
 }
 #endif
+
+
+int _close(int val);
+int _lseek(int val0, int val1, int val2);
+// Stubs to suppress missing stdio definitions for nosys
+// #define TRAP_RET_ZERO  {__BKPT(0); return 0;}
+int _close(int val) {
+    (void) val;
+    __BKPT(0); 
+    return 0;
+}
+int _lseek(int val0, int val1, int val2) {
+    (void) val0;
+    (void) val1;
+    (void) val2;
+    __BKPT(0); 
+    return 0;
+}
+//int _read(int val0, char * val1, int val2) TRAP_RET_ZERO
+//int _write(int val0, char * val1, int val2) TRAP_RET_ZERO
+// int _fstat(int val0, void * val1) TRAP_RET_ZERO
+// int _isatty(int val0) TRAP_RET_ZERO
+// int _getpid(void) TRAP_RET_ZERO
+// void _kill(int val0, int val1) {__BKPT(0);}
