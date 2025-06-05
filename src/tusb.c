@@ -59,14 +59,11 @@ TU_ATTR_WEAK void tusb_time_delay_ms_api(uint32_t ms) {
 // Public API
 //--------------------------------------------------------------------+
 bool tusb_rhport_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
-  printf("-->>1\n\r");
   //  backward compatible called with tusb_init(void)
   #if defined(TUD_OPT_RHPORT) || defined(TUH_OPT_RHPORT)
-  printf("-->>2 (%p)\n\r", rh_init);
   if (rh_init == NULL) {
     #if CFG_TUD_ENABLED && defined(TUD_OPT_RHPORT)
     // init device stack CFG_TUSB_RHPORTx_MODE must be defined
-    printf("-->>3\n\r");
     const tusb_rhport_init_t dev_init = {
       .role = TUSB_ROLE_DEVICE,
       .speed = TUD_OPT_HIGH_SPEED ? TUSB_SPEED_HIGH : TUSB_SPEED_FULL
