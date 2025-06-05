@@ -59,11 +59,14 @@ TU_ATTR_WEAK void tusb_time_delay_ms_api(uint32_t ms) {
 // Public API
 //--------------------------------------------------------------------+
 bool tusb_rhport_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
+  printf("-->>1\n\r");
   //  backward compatible called with tusb_init(void)
   #if defined(TUD_OPT_RHPORT) || defined(TUH_OPT_RHPORT)
+  printf("-->>2 (%p)\n\r", rh_init);
   if (rh_init == NULL) {
     #if CFG_TUD_ENABLED && defined(TUD_OPT_RHPORT)
     // init device stack CFG_TUSB_RHPORTx_MODE must be defined
+    printf("-->>3\n\r");
     const tusb_rhport_init_t dev_init = {
       .role = TUSB_ROLE_DEVICE,
       .speed = TUD_OPT_HIGH_SPEED ? TUSB_SPEED_HIGH : TUSB_SPEED_FULL
@@ -217,9 +220,11 @@ bool tu_edpt_validate(tusb_desc_endpoint_t const* desc_ep, tusb_speed_t speed, b
     }
 
     case TUSB_XFER_BULK:
-      if (speed == TUSB_SPEED_HIGH) {
+    if (speed == TUSB_SPEED_HIGH) {
+        printf("!-%d, %d, %d\n\r", desc_ep->bEndpointAddress, speed, max_packet_size);
         // Bulk highspeed must be EXACTLY 512
         TU_ASSERT(max_packet_size == 512);
+
       } else {
         // Bulk fullspeed can only be 8, 16, 32, 64
         if (is_host && max_packet_size == 512) {

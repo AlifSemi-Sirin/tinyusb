@@ -11,7 +11,7 @@
 #ifndef DCD_ENSEMBLE_H_
 #define DCD_ENSEMBLE_H_
 
-#define CONFIG_USB_DEVICE_FULL_SPEED        // ALIF USB Full-speed mode activated
+#define CONFIG_USB_DEVICE_HIGH_SPEED        // ALIF USB Full-speed mode activated
 
 /* Enable clock supply for USB */
 #define PERIPH_CLK_ENA_USB_CKEN (1U << 20)
@@ -109,17 +109,6 @@ static inline void usb_ctrl2_phy_power_on_reset_clear()
 {
 	sys_clear_bits(EXPMST_USB_CTRL2, USB_CTRL2_POR_RST_MASK);
 }
-
-static inline void sb_dc_alif_int_enable()
-{
-	irq_enable(USB_ALIF_IRQ);
-}
-
-static inline void sb_dc_alif_int_disable()
-{
-	irq_disable(USB_ALIF_IRQ);
-}
-
 
 
 /**

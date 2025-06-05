@@ -465,6 +465,7 @@ bool tud_rhport_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
     return true; // skip if already initialized
   }
   TU_ASSERT(rh_init);
+printf("ini - %d\n\r", rh_init->speed);
 
   TU_LOG_USBD("USBD init on controller %u, speed = %s\r\n", rhport,
               rh_init->speed == TUSB_SPEED_HIGH ? "High" : "Full");

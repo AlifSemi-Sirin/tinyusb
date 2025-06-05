@@ -69,3 +69,8 @@ size_t board_get_unique_id(uint8_t id[], size_t max_len) {
 uint32_t board_millis(void) {
   return k_uptime_get_32();
 }
+
+void USBD_IRQHandler(void)
+{
+  tud_int_handler(0);
+}

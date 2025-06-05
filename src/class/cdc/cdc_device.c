@@ -451,6 +451,7 @@ bool cdcd_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint32_
 
   uint8_t itf;
   cdcd_interface_t* p_cdc;
+   printf("+ %x \n\r", itf);
 
   // Identify which interface to use
   for (itf = 0; itf < CFG_TUD_CDC; itf++) {
@@ -459,9 +460,10 @@ bool cdcd_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint32_
       break;
     }
   }
+   printf("++ %x \n\r", itf);
   TU_ASSERT(itf < CFG_TUD_CDC);
   cdcd_epbuf_t* p_epbuf = &_cdcd_epbuf[itf];
-
+ printf("+++ \n\r");
   // Received new data
   if (ep_addr == p_cdc->ep_out) {
     tu_fifo_write_n(&p_cdc->rx_ff, p_epbuf->epout, (uint16_t) xferred_bytes);
