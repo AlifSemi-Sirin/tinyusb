@@ -169,9 +169,13 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
 
 	// Device soft reset
 	sys_set_bits(DCTL_REG, DCTL_CSFTRST);
-	while (sys_test_bit(DCTL_REG, DCTL_CSFTRST)) {
-        k_busy_wait(1 * 1000);  // 1000 μs = 1 ms
-	}
+    while ((*(volatile uint32_t *)DCTL_REG & DCTL_CSFTRST) != 0) {
+        k_busy_wait(1 *1000);  // 1000 μs = 1 ms
+    }
+
+	// while (sys_test_bit(DCTL_REG, DCTL_CSFTRST)) {
+    //     k_busy_wait(1 * 1000);  // 1000 μs = 1 ms
+	// }
 
 	// Core + PHY soft reset
     k_busy_wait(50 * 1000); // 50 ms
@@ -226,40 +230,26 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
 	sys_set_bits(DEVTEN_REG, DEVTEN_ULSTCNGEN);
 
 	// Endpoint Configuration - Start config phase
-	uint8_t st = usb_dc_alif_send_ep_cmd(0, DEPCMD_DEPSTARTCFG, 0);
-	if (st != 0) {
-		LOG_ALIF_ERROR("EP0 DEPSTARTCFG failed, status=0x%02x", st);
-	}
+	usb_dc_alif_send_ep_cmd(0, DEPCMD_DEPSTARTCFG, 0);
 
 	// Endpoint Configuration - EP0 OUT (ep = 0)
 	uint8_t ep_idx = 0;
 	XHC_REG_WR(DEPCMDPAR1N(ep_idx), (0 << 25) | (1 << 10) | (1 << 8));
 	XHC_REG_WR(DEPCMDPAR0N(ep_idx), (0 << 22) | (0 << 17) | (ALIF_MAX_PCK_SIZE << 3) | (0 << 1));
-	st = usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0);
-	if (st != 0) {
-		LOG_ALIF_ERROR("EP%d DEPCFG failed, status=0x%02x", ep_idx, st);
-	}
+	usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0);
 
 	// Endpoint Configuration - EP0 IN (ep = 1)
 	ep_idx = 1;
 	XHC_REG_WR(DEPCMDPAR1N(ep_idx), (1 << 25) | (1 << 10) | (1 << 8));
 	XHC_REG_WR(DEPCMDPAR0N(ep_idx), (0 << 22) | (0 << 17) | (ALIF_MAX_PCK_SIZE << 3) | (0 << 1));
-	st = usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0);
-	if (st != 0) {
-		LOG_ALIF_ERROR("EP%d DEPCFG failed, status=0x%02x", ep_idx, st);
-	}
+	usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0);
 
 	// set initial xfer configuration for CONTROL eps
     XHC_REG_WR(DEPCMDPAR0N(0), 1);
-	st = usb_dc_alif_send_ep_cmd(0, DEPCMD_DEPXFERCFG, 0);
-	if (st != 0) {
-		LOG_ALIF_ERROR("EP%d DEPXFERCFG failed, status=0x%02x", 0, st);
-	}
-	XHC_REG_WR(DEPCMDPAR0N(1), 1);
-	st = usb_dc_alif_send_ep_cmd(1, DEPCMD_DEPXFERCFG, 0);
-	if (st != 0) {
-		LOG_ALIF_ERROR("EP%d DEPXFERCFG failed, status=0x%02x", 1, st);
-	}
+	usb_dc_alif_send_ep_cmd(0, DEPCMD_DEPXFERCFG, 0);
+
+    XHC_REG_WR(DEPCMDPAR0N(1), 1);
+	usb_dc_alif_send_ep_cmd(1, DEPCMD_DEPXFERCFG, 0);
 
     // prepare trb for the first setup packet
     uint8_t ep = 0;
@@ -273,9 +263,7 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
     // send trb to the usb dma
     XHC_REG_WR(DEPCMDPAR1N(ep), (uint32_t)local_to_global(_xfer_trb[ep]));
 	XHC_REG_WR(DEPCMDPAR0N(ep), 0);
-	if (usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPSTRTXFER, 0) != 0) {
-		LOG_ALIF_ERROR("tx err!");
-	}
+	usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPSTRTXFER, 0);
 
     sys_set_bits(DALEPENA_REG, (1 << ep)); // enable ep0 OUT
     sys_set_bits(DALEPENA_REG, (1 << (ep + 1))); // enable ep0 IN
@@ -424,7 +412,7 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
  
      uint8_t ep = (tu_edpt_number(desc_ep->bEndpointAddress) << 1) |
                   tu_edpt_dir(desc_ep->bEndpointAddress);
-    printf("ep opn %d->%d, %d\n\r", desc_ep->bEndpointAddress, ep, desc_ep->wMaxPacketSize);
+    // printf("ep opn %d->%d, %d\n\r", desc_ep->bEndpointAddress, ep, desc_ep->wMaxPacketSize);
  
      // [TODO] verify that the num doesn't exceed hw max
  
@@ -440,21 +428,14 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
  
 	XHC_REG_WR(DEPCMDPAR1N(ep), (ep << 25) | (interval << 16) | (1 << 10) | (1 << 8));
 	XHC_REG_WR(DEPCMDPAR0N(ep), (0 << 30) | (0 << 22) | (fifo_num<< 17) | ((desc_ep->wMaxPacketSize & 0x7FF) << 3) | (desc_ep->bmAttributes.xfer << 1));
-    
-	if (usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPCFG, 0) != 0) {
-		LOG_ALIF_ERROR("EP%d DEPCFG failed", ep);
-        return false;
-	}
+	usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPCFG, 0);
 
-    XHC_REG_WR(DEPCMDPAR0N(0), 1);
-	if (usb_dc_alif_send_ep_cmd(0, DEPCMD_DEPXFERCFG, 0) != 0) {
-		LOG_ALIF_ERROR("EP%d DEPXFERCFG failed", 0);
-        return false;
-	}
+    XHC_REG_WR(DEPCMDPAR0N(ep), 1);
+	usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPXFERCFG, 0);
  
-     sys_set_bits(DALEPENA_REG, (1 << ep)); 
+    sys_set_bits(DALEPENA_REG, (1 << ep)); 
  
-     return true;
+    return true;
  }
  
  // Close all non-control endpoints, cancel all pending transfers if any.
@@ -572,10 +553,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
  
      uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
  
-    if(usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPSSTALL, 0) != 0) {
-        LOG_ALIF_ERROR("EP%d DEPSSTALL failed", ep);
-        return;
-    }
+    usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPSSTALL, 0);
 
      if (0 == tu_edpt_number(ep_addr)) {
          _ctrl_long_data = false;
@@ -713,9 +691,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                      // prepare ep command
                     XHC_REG_WR(DEPCMDPAR1N(ep), (uint32_t)local_to_global(_xfer_trb[ep]));
 	                XHC_REG_WR(DEPCMDPAR0N(ep), 0);
-	                if (usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPSTRTXFER, 0) != 0) {
-		                LOG_ALIF_ERROR("tx err!");
-	                }
+	                usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPSTRTXFER, 0);
  
                      *(volatile uint32_t*) 0x49007000 ^= 16; // [TEMP]
                  }
@@ -752,17 +728,13 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
             uint8_t ep_idx = 0;
             XHC_REG_WR(DEPCMDPAR1N(ep_idx), (0 << 25) | (1 << 10) | (1 << 8));
 	        XHC_REG_WR(DEPCMDPAR0N(ep_idx), (2 << 30) | (0 << 22) | (0 << 17) | (64 << 3) | (0 << 1));
-	        if (usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0) != 0) {
-		        LOG_ALIF_ERROR("EP%d DEPCFG failed", ep_idx);
-	        }
+	        usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0);
              
             ep_idx = 1;
             XHC_REG_WR(DEPCMDPAR1N(ep_idx), (1 << 25) | (1 << 10) | (1 << 8));
 	        XHC_REG_WR(DEPCMDPAR0N(ep_idx), (2 << 30) | (0 << 22) | (0 << 17) | (64 << 3) | (0 << 1));
-	        if (usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0) != 0) {
-		        LOG_ALIF_ERROR("EP%d DEPCFG failed", ep_idx);
-	        }
-         } break;
+	        usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0);
+        } break;
          case DEVT_ULSTCHNG: {
             // LOG_ALIF_INFO("Link status change");
              switch (info) {
@@ -834,10 +806,7 @@ static uint8_t _dcd_start_xfer(uint8_t ep, void *buf, uint32_t size, uint8_t typ
     NVIC_EnableIRQ(USB_ALIF_IRQ);
 
     // Issue DEPSTRTXFER command to start transfer
-	if (usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPSTRTXFER, 0) != 0) {
-		LOG_ALIF_ERROR("tx err!");
-        return 1; 
-	}
+	usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPSTRTXFER, 0);
 
     return 0; 
 }
@@ -887,31 +856,46 @@ static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t pa
 
 	// Store PHY configuration
 	uint32_t phycfg = XHC_REG_RD(GUSB2PHYCFG0_REG);
-	sys_clear_bits(GUSB2PHYCFG0_REG, GUSB2PHYCFG0_ENBLSLPM);
-	sys_clear_bits(GUSB2PHYCFG0_REG, GUSB2PHYCFG0_SUSPENDUSB20);
+	sys_clear_bits(GUSB2PHYCFG0_REG, GUSB2PHYCFG0_ENBLSLPM | GUSB2PHYCFG0_SUSPENDUSB20);
 
 	// Set up command in DEPCMD register
-	uint32_t cmd = XHC_REG_RD(DEPCMDN(ep));
-	cmd &= ~DEPCMD_CMDTYP_MASK;
-	cmd |= DEPCMD_CMDTYP(cmd_type);
+	// uint32_t cmd = XHC_REG_RD(DEPCMDN(ep));
+	// cmd &= ~DEPCMD_CMDTYP_MASK;
+	// cmd |= DEPCMD_CMDTYP(cmd_type);
 
-	cmd &= ~DEPCMD_CMDIOC; // Clear IOC bit
+	// cmd &= ~DEPCMD_CMDIOC; // Clear IOC bit
 
-	cmd &= ~DEPCMD_PARAM_MASK;
-	cmd |= DEPCMD_PARAM(param);
+	// cmd &= ~DEPCMD_PARAM_MASK;
+	// cmd |= DEPCMD_PARAM(param);
 
-	cmd |= DEPCMD_CMDACT; // Set ACT bit
-	XHC_REG_WR(DEPCMDN(ep), cmd);
+	// cmd |= DEPCMD_CMDACT; // Set ACT bit
+	// XHC_REG_WR(DEPCMDN(ep), cmd);
 
-	// Wait for command completion
-	while (XHC_REG_RD(DEPCMDN(ep)) & DEPCMD_CMDACT) {
-        // k_busy_wait(2);
-	}
+	// // Wait for command completion
+	// while (XHC_REG_RD(DEPCMDN(ep)) & DEPCMD_CMDACT) {
+    //     // k_busy_wait(2);
+	// }
+
+    sys_clear_bits(DEPCMDN(ep), DEPCMD_CMDTYP_MASK);
+    sys_set_bits(DEPCMDN(ep), DEPCMD_CMDTYP(cmd_type));
+
+    sys_clear_bits(DEPCMDN(ep), DEPCMD_CMDIOC);
+
+    sys_clear_bits(DEPCMDN(ep), DEPCMD_PARAM_MASK);
+    sys_set_bits(DEPCMDN(ep), DEPCMD_PARAM(param));
+
+    // dispatch command and wait for completion
+    sys_set_bits(DEPCMDN(ep), DEPCMD_CMDACT);
+    while(*((volatile uint32_t *)DEPCMDN(ep)) & DEPCMD_CMDACT) { __NOP(); };
 
 	// Restore PHY configuration
 	XHC_REG_WR(GUSB2PHYCFG0_REG, phycfg);
 
-	uint8_t status = (XHC_REG_RD(DEPCMDN(ep)) >> 12) & 0x0F; // Get command status
+	volatile uint32_t status = (XHC_REG_RD(DEPCMDN(ep)) >> 12) & 0x0F; // Get command status
+    if(status != 0)
+    {
+        printf("cmd err (%d)\n\r", status);
+    }
 	// LOG_DBG("DEPCMD complete: ep=%02x, cmd=0x%02x, result=0x%02x", ep, cmd_type, status);
 
 	return status;
