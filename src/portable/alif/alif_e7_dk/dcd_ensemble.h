@@ -11,7 +11,7 @@
 #ifndef DCD_ENSEMBLE_H_
 #define DCD_ENSEMBLE_H_
 
-#define CONFIG_USB_DEVICE_HIGH_SPEED        // ALIF USB Full-speed mode activated
+#define CONFIG_USB_DEVICE_HIGH_SPEED        // ALIF USB HIGH-speed mode activated
 
 /* Enable clock supply for USB */
 #define PERIPH_CLK_ENA_USB_CKEN (1U << 20)
