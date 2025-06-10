@@ -57,9 +57,6 @@ typedef union {
 
 
 // Prototype for the functions
-bool RTSS_IsCacheClean_Required_by_Addr (volatile void *addr, int32_t size);
-
-
 static inline void enable_usb_periph_clk(void)
 {
 	sys_set_bits(EXPMST_PERIPH_CLK_EN, PERIPH_CLK_ENA_USB_CKEN);
@@ -109,39 +106,5 @@ static inline void usb_ctrl2_phy_power_on_reset_clear()
 {
 	sys_clear_bits(EXPMST_USB_CTRL2, USB_CTRL2_POR_RST_MASK);
 }
-
-
-/**
-  \fn          void RTSS_CleanDCache_by_Addr (volatile void *addr, int32_t dsize)
-  \brief       Add a wrapper on the CleanDcache APIs so that
-               TCM regions are ignored.
-  \param[in]   addr    address
-  \param[in]   dsize   size of memory block (in number of bytes)
-*/
-__STATIC_FORCEINLINE
-void RTSS_CleanDCache_by_Addr (volatile void *addr, int32_t dsize)
-{
-    if(RTSS_IsCacheClean_Required_by_Addr (addr, dsize))
-    {
-        /*
-         * Considering the time required to Clean by address for more
-         * than 128K size, it is better to do global clean.
-         *
-         * Perform the check for threshold size and decide.
-         *
-         */
-        if (dsize < RTSS_FORCE_GLOBAL_CLEAN_INVALIDATE_THRESHOLD_SIZE)
-            SCB_CleanDCache_by_Addr (addr, dsize);
-        else
-            SCB_CleanDCache ();
-    }
-    else
-    {
-        __DSB();
-        __ISB();
-    }
-}
-
-
 
 #endif /* DCD_ENSEMBLE_H_ */
