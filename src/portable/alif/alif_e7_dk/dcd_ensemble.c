@@ -100,18 +100,25 @@
  #define LOG(...)
  #endif
  
-#define MAX_EP_NUM 8            // max number of endpoints
-#define MAX_TRB_NUM MAX_EP_NUM  // max number of trbs 
-
-/// Structs and Buffers --------------------------------------------------------
+#define MAX_LOGICAL_EP   8
+#define MAX_TRB_NUM      (MAX_LOGICAL_EP * 2)   // = 16 physical endpoints
+ 
+// Structs and Buffers --------------------------------------------------------
 #define EVT_BUF_SIZE  1024
 #define CTRL_BUF_SIZE 64
-__aligned(4096) CFG_TUSB_MEM_SECTION static uint32_t _evnt_buf[EVT_BUF_SIZE];
-__aligned(32) CFG_TUSB_MEM_SECTION static uint8_t _ctrl_buf[CTRL_BUF_SIZE]; // [TODO] runtime alloc
-__aligned(32) CFG_TUSB_MEM_SECTION static uint32_t _xfer_trb[MAX_TRB_NUM][4];         // [TODO] runtime alloc
+
+__aligned(4096) CFG_TUSB_MEM_SECTION \
+static uint32_t _evnt_buf[EVT_BUF_SIZE];
+
+__aligned(32) CFG_TUSB_MEM_SECTION \
+static uint8_t _ctrl_buf[CTRL_BUF_SIZE];    // [TODO] runtime alloc
+
+__aligned(32) CFG_TUSB_MEM_SECTION \
+static uint32_t _xfer_trb[MAX_TRB_NUM][4];  // [TODO] runtime alloc
+
+static uint16_t _xfer_bytes[MAX_TRB_NUM];
 
  static volatile uint32_t* _evnt_tail;
- static uint16_t _xfer_bytes[8];
  static bool     _ctrl_long_data = false;
  static bool     _xfer_cfgd = false;
  static uint32_t _sts_stage = 0;
@@ -148,17 +155,13 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
     usb_ctrl2_phy_power_on_reset_clear();
 
     // force stop/disconnect
-    dcd_disconnect(-1);     // ToDO: check if this is needed
+    dcd_disconnect(rhport);     // ToDO: check if this is needed
 
 	// Device soft reset
 	sys_set_bits(DCTL_REG, DCTL_CSFTRST);
     while ((*(volatile uint32_t *)DCTL_REG & DCTL_CSFTRST) != 0) {
         k_busy_wait(1 *1000);  // 1000 μs = 1 ms
     }
-
-	// while (sys_test_bit(DCTL_REG, DCTL_CSFTRST)) {
-    //     k_busy_wait(1 * 1000);  // 1000 μs = 1 ms
-	// }
 
 	// Core + PHY soft reset
     k_busy_wait(50 * 1000); // 50 ms
@@ -266,8 +269,6 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
  // from host... It will be called by application in the MCU USB interrupt handler.
  void dcd_int_handler(uint8_t rhport)
  {
-    //  LOG_ALIF_INFO("-->>");
-
      // process failures first
 	uint32_t gsts = XHC_REG_RD(GSTS_REG);
 	if (gsts & GSTS_DEVICE_IP) {
