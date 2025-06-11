@@ -11,13 +11,14 @@
  #include "tusb_option.h"
  
  #if CFG_TUD_ENABLED
- 
+
+  #include "platform_def.h"
+  #include "dcd_ensemble.h"
 
   #pragma message("Building for Zephyr RTOS")
   #include <zephyr/kernel.h>
   #include <zephyr/cache.h>
   #include <zephyr/devicetree.h>
-  
   
   #include <soc_common.h>
   #include <soc_memory_map.h>     // for local_to_global() function\
@@ -40,14 +41,8 @@
   #define USB_CTRL_BASE   DT_REG_ADDR(USB_NODE)
   #define USB_ALIF_IRQ    DT_IRQN(USB_NODE)
 
-//   #define USB_CTRL_BASE DT_REG_ADDR(DT_INST(0, DT_DRV_COMPAT))
-//   #define USB_ALIF_IRQ  DT_IRQN(DT_INST(0, DT_DRV_COMPAT))
-
   #define DEPEVT_STS_NOTREADY_MASK   0x0B
   #define DEPEVT_STS_NOTREADY_CODE   0x02
-
-  #include "platform_def.h"
-  #include "dcd_ensemble.h"
 
 #if defined(CONFIG_USB_DEVICE_HIGH_SPEED)
   #define ALIF_DEVSPD_SETTING   0x0  /* High-speed */
@@ -128,6 +123,56 @@ static uint16_t _xfer_bytes[MAX_TRB_NUM];
  // helpers
  static inline uint32_t _get_transfered_bytes(uint8_t ep) {
     return _xfer_bytes[ep] - (_xfer_trb[ep][2] & 0x00FFFFFF);
+}
+
+static inline void enable_usb_periph_clk(void)
+{
+	sys_set_bits(EXPMST_PERIPH_CLK_EN, PERIPH_CLK_ENA_USB_CKEN);
+}
+
+static inline void disable_usb_periph_clk(void)
+{
+	sys_clear_bits(EXPMST_PERIPH_CLK_EN, PERIPH_CLK_ENA_USB_CKEN);
+}
+
+static inline void enable_cgu_clk20m(void)
+{
+	sys_set_bits(CGU_CLK_ENA, CLK_ENA_CLK20M);
+}
+
+static inline void disable_cgu_clk20m(void)
+{
+	sys_clear_bits(CGU_CLK_ENA, CLK_ENA_CLK20M);
+}
+
+static inline void enable_usb_phy_power(void)
+{
+	sys_clear_bits(VBAT_PWR_CTRL, PWR_CTRL_UPHY_PWR_MASK);
+}
+
+static inline void disable_usb_phy_power(void)
+{
+	sys_set_bits(VBAT_PWR_CTRL, PWR_CTRL_UPHY_PWR_MASK);
+}
+
+static inline void enable_usb_phy_isolation(void)
+{
+	sys_set_bits(VBAT_PWR_CTRL, PWR_CTRL_UPHY_ISO);
+}
+
+static inline void disable_usb_phy_isolation(void)
+{
+	sys_clear_bits(VBAT_PWR_CTRL, PWR_CTRL_UPHY_ISO);
+}
+
+static inline void usb_ctrl2_phy_power_on_reset_set()
+{
+	sys_set_bits(EXPMST_USB_CTRL2, USB_CTRL2_POR_RST_MASK);
+}
+
+static inline void usb_ctrl2_phy_power_on_reset_clear()
+{
+	sys_clear_bits(EXPMST_USB_CTRL2, USB_CTRL2_POR_RST_MASK);
 }
  
  /// Device Setup ---------------------------------------------------------------
@@ -384,7 +429,7 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
      if (TUSB_XFER_ISOCHRONOUS == desc_ep->bmAttributes.xfer)
          return false;
  
-     uint8_t ep = (tu_edpt_number(desc_ep->bEndpointAddress) << 1) |
+     uint8_t ep_index = (tu_edpt_number(desc_ep->bEndpointAddress) << 1) |
                   tu_edpt_dir(desc_ep->bEndpointAddress);
  
      // [TODO] verify that the num doesn't exceed hw max
@@ -399,14 +444,14 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
                         tu_edpt_number(desc_ep->bEndpointAddress) : 0;
      uint8_t interval = 0 < desc_ep->bInterval ? (desc_ep->bInterval - 1) : 0;
  
-	XHC_REG_WR(DEPCMDPAR1N(ep), (ep << 25) | (interval << 16) | (1 << 10) | (1 << 8));
-	XHC_REG_WR(DEPCMDPAR0N(ep), (0 << 30) | (0 << 22) | (fifo_num<< 17) | ((desc_ep->wMaxPacketSize & 0x7FF) << 3) | (desc_ep->bmAttributes.xfer << 1));
-	(void)usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPCFG, 0);
+	XHC_REG_WR(DEPCMDPAR1N(ep_index), (ep_index << 25) | (interval << 16) | (1 << 10) | (1 << 8));
+	XHC_REG_WR(DEPCMDPAR0N(ep_index), (0 << 30) | (0 << 22) | (fifo_num<< 17) | ((desc_ep->wMaxPacketSize & 0x7FF) << 3) | (desc_ep->bmAttributes.xfer << 1));
+	(void)usb_dc_alif_send_ep_cmd(ep_index, DEPCMD_DEPCFG, 0);
 
-    XHC_REG_WR(DEPCMDPAR0N(ep), 1);
-	(void)usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPXFERCFG, 0);
+    XHC_REG_WR(DEPCMDPAR0N(ep_index), 1);
+	(void)usb_dc_alif_send_ep_cmd(ep_index, DEPCMD_DEPXFERCFG, 0);
  
-    sys_set_bits(DALEPENA_REG, (1 << ep)); 
+    sys_set_bits(DALEPENA_REG, (1 << ep_index)); 
  
     return true;
  }
@@ -416,7 +461,12 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
  // required for multiple configuration support.
  void dcd_edpt_close_all(uint8_t rhport)
  {
+    // disable interrupt to prevent race condition
+    dcd_int_disable(rhport);
+
     // LOG_ALIF_INFO("%010u >%s", DWT->CYCCNT, __func__);
+
+    dcd_int_enable(rhport);
  }
  
  // Close an endpoint. his function is used for implementing alternate settings.
@@ -425,12 +475,45 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
  // progress through this endpoint, before returning.
  // Implementation is optional. Must be called from the USB task.
  // Interrupts could be disabled or enabled during the call.
+ /**
+ * @brief Close (disable) the specified endpoint and abort any in-flight transfers.
+ *
+ * After this call, the USB controller will no longer accept or send packets
+ * on this endpoint. Any pending TRB is canceled, and driver state is reset
+ * so no further callbacks occur.
+ *
+ * Based on Alif E7 USB controller behavior (DALEPENA bit disables the endpoint,
+ * DEPENDXFER command aborts an active TRB).
+ *
+ * @param rhport   Root hub port (unused for single-port controllers)
+ * @param ep_addr  TinyUSB endpoint address (logical endpoint + direction)
+ */
  void dcd_edpt_close(uint8_t rhport, uint8_t ep_addr) 
 {
-    // TODO: implement this function
     (void)rhport;
-    (void)ep_addr;
-    TU_ASSERT(0, "dcd_edpt_close() not implemented");
+
+    // Convert TinyUSB endpoint address to physical index:
+    // physical_index = (endpoint_number << 1) | direction
+    uint8_t ep_index = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
+
+    // 1) Disable endpoint so hardware ignores further packets
+    sys_clear_bits(DALEPENA_REG, (1U << ep_index));
+
+    // 2) If a TRB is still owned by hardware (HWO bit set), abort it:
+    if (_xfer_trb[ep_index][3] & (1U << 0)) {
+        // Temporarily allow DEPCMD_DEPENDXFER to take effect
+        sys_set_bits(GUCTL2_REG, GUCTL2_RST_ACTBITLATER);
+        (void)usb_dc_alif_send_ep_cmd(ep_index, DEPCMD_DEPENDXFER, 0);
+        sys_clear_bits(GUCTL2_REG, GUCTL2_RST_ACTBITLATER);
+    }
+
+    // 3) Clear TRB descriptor and reset bookkeeping
+    _xfer_trb[ep_index][3] = 0;          // clear control bits (incl. HWO/IOC)
+    _xfer_bytes[ep_index] = 0;           // no bytes pending
+
+    LOG_ALIF_INFO("Endpoint %u %s closed",
+                  (unsigned)(ep_index >> 1),
+                  (ep_index & 1) ? "IN" : "OUT");
 }
  
  // Submit a transfer, When complete dcd_event_xfer_complete() is invoked to
