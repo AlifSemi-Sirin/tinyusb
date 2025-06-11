@@ -8,6 +8,9 @@
 #define PLATFORM_DEF_H
 
 #include <zephyr/sys/util.h> // for BIT macros
+#include <soc_common.h>
+#include <soc_memory_map.h>    
+
 
 /* USB DMA on some MCUs can only access a specific SRAM region with restriction on alignment.
  * Tinyusb use follows macros to declare transferring memory so that they can be put

@@ -20,9 +20,6 @@
   #include <zephyr/cache.h>
   #include <zephyr/devicetree.h>
   
-  #include <soc_common.h>
-  #include <soc_memory_map.h>     // for local_to_global() function\
-
   #define LOG_PRINT_INFO(fmt, ...)  printf("[%lld ms] INFO  %s: " fmt "\n", k_uptime_get(), __func__, ##__VA_ARGS__)
   #define LOG_PRINT_ERROR(fmt, ...) printf("[%lld ms] ERROR %s: " fmt "\n", k_uptime_get(), __func__, ##__VA_ARGS__)
   #define LOG_PRINT_SHORT(fmt, ...) printf( fmt "\n", ##__VA_ARGS__)
@@ -35,8 +32,6 @@
   #define LOG_ALIF_ERROR LOG_PRINT_ERROR
   #define LOG_ALIF_SHORT LOG_PRINT_SHORT
       
-  #define LOG_ALIF_HEXDUMP log_buffer_hex
-  
   #define USB_NODE        DT_NODELABEL(usb0)
   #define USB_CTRL_BASE   DT_REG_ADDR(USB_NODE)
   #define USB_ALIF_IRQ    DT_IRQN(USB_NODE)
@@ -114,8 +109,7 @@ static uint16_t _xfer_bytes[MAX_TRB_NUM];
  static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t type);
  static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint16_t par);
  static void _dcd_handle_devt(uint8_t evt, uint16_t info);
- static void log_buffer_hex(const uint8_t *buf, size_t len);
- 
+  
  /// API Extension --------------------------------------------------------------
  
  void dcd_uninit(void);
@@ -522,7 +516,6 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
 {
     (void) rhport;
     
-    // LOG_ALIF_HEXDUMP(buffer, total_bytes);
     // Compute physical endpoint index: (number << 1) | dir
     uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
 
@@ -645,19 +638,22 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
  */
 static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint16_t par)
  {
-    TU_ASSERT(ep_index < MAX_TRB_NUM, "Invalid EP index");
+    if (!(ep_index < MAX_TRB_NUM)) {
+        TU_MESS_FAILED();
+        TU_BREAKPOINT();
+        return;
+    }    
 
     switch (evt) {
         case DEPEVT_XFERCOMPLETE: 
         {
             // Invalidate the TRB entry so we can safely read updated fields
             sys_cache_data_invd_range(_xfer_trb[ep_index], sizeof(_xfer_trb[0]));
+            // Transfer completed: extract TRBCTL type from the TRB
+            uint8_t trbctl = (_xfer_trb[ep_index][3] >> 4) & 0x3F;
 
             if (ep_index == 0)
             {
-                // Transfer completed: extract TRBCTL type from the TRB
-                uint8_t trbctl = (_xfer_trb[0][3] >> 4) & 0x3F;
-
                 // EP0 OUT (SETUP or STATUS OUT)
                 if (trbctl == TRBCTL_CTL_SETUP)
                 {
@@ -667,7 +663,7 @@ static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint1
                     break;
                 } 
 
-                if (TRBCTL_CTL_STAT3 == trbctl) 
+                if (trbctl == TRBCTL_CTL_STAT3) 
                 {
                      if (0 < _xfer_bytes[0]) {
                          sys_cache_data_invd_range((void*) _xfer_trb[0][0], _xfer_bytes[0]);
@@ -692,8 +688,7 @@ static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint1
              } 
              else if (ep_index == 1) 
              {
-                 uint8_t trbctl = (_xfer_trb[1][3] >> 4) & 0x3F;
-                 if (TRBCTL_CTL_STAT2 != trbctl) { // STATUS IN notification is done at xfer request
+                 if (trbctl != TRBCTL_CTL_STAT2) { // STATUS IN notification is done at xfer request
                      dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_IN),
                                              _get_transfered_bytes(1),
                                              XFER_RESULT_SUCCESS, true);
@@ -786,16 +781,14 @@ static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint1
 
      switch (evt) {
          case DEVT_USBRST: {
-             _xfer_cfgd = false;
+            _xfer_cfgd = false;
  
-             // [TODO] issue depcstall for any ep in stall mode
+            // [TODO] issue depcstall for any ep in stall mode
             sys_clear_bits(DCFG_REG, DCFG_DEVADDR_MASK); // reset address
             
             // ToDo : FULL/HIGH Speed
             sys_set_bits(DCFG_REG, DCFG_SPEED(ALIF_DEVSPD_SETTING));  // 0x1: Full-speed (USB 2.0 PHY clock is 30 MHz or 60 MHz)
-            tusb_speed_t speed = TUSB_SPEED_FULL;   // Full-speed 
-
-             dcd_event_bus_reset(TUD_OPT_RHPORT, ALIF_TUSB_SPEED, true); // [TODO] actual speed
+            dcd_event_bus_reset(TUD_OPT_RHPORT, ALIF_TUSB_SPEED, true); // [TODO] actual speed
          } break;
          case DEVT_CONNECTDONE: {
              // read conn speed from dsts
@@ -911,31 +904,6 @@ static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t pa
 	// Restore PHY configuration
 	XHC_REG_WR(GUSB2PHYCFG0_REG, phycfg);
 	return (XHC_REG_RD(DEPCMDN(ep)) >> 12) & 0x0F; // Get command status;
-}
-
-static void log_buffer_hex(const uint8_t *buf, size_t len)
-{
-    char line[HEX_DUMP_BYTES_PER_LINE * 3 + 1]; // "FF " = 3 symbols + \0
-    size_t offset = 0;
-
-    for (size_t i = 0; i < len; i++) {
-        if (i % HEX_DUMP_BYTES_PER_LINE == 0) {
-            offset = 0;
-        }
-
-        offset += snprintf(line + offset,
-                           sizeof(line) - offset,
-                           "%02x ",
-                           buf[i]);
-
-        if ((i % HEX_DUMP_BYTES_PER_LINE) == (HEX_DUMP_BYTES_PER_LINE - 1) ||
-            i == len - 1) {
-            line[offset] = '\0';
-            printf("%04zx: %s\n",  // %04zx — offset in buffer
-                          i - (i % HEX_DUMP_BYTES_PER_LINE),
-                          line);
-        }
-    }
 }
  
 #endif // CFG_TUD_ENABLED
