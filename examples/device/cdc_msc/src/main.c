@@ -26,21 +26,6 @@
 #include "bsp/board_api.h"
 #include "tusb.h"
 
-#include "tusb_config.h"
-#define STRINGIFY(x) #x
-#define TOSTRING(x)  STRINGIFY(x)
-
-#pragma message ("=== Macros TinyUSB ===")
-#pragma message ("CFG_TUSB_MCU      = " TOSTRING(CFG_TUSB_MCU))
-#pragma message ("CFG_TUSB_OS       = " TOSTRING(CFG_TUSB_OS))
-#pragma message ("CFG_TUSB_RHPORT0_MODE = " TOSTRING(CFG_TUSB_RHPORT0_MODE))
-#pragma message ("TUP_DCD_ENDPOINT_MAX   = " TOSTRING(TUP_DCD_ENDPOINT_MAX))
-#pragma message ("TUD_OPT_RHPORT         = " TOSTRING(TUD_OPT_RHPORT))
-#pragma message ("CFG_TUD_ENABLED        = " TOSTRING(CFG_TUD_ENABLED))
-#pragma message ("CFG_TUD_CDC            = " TOSTRING(CFG_TUD_CDC))
-#pragma message ("CFG_TUD_MSC            = " TOSTRING(CFG_TUD_MSC))
-#pragma message ("==============================")
-
 //--------------------------------------------------------------------+
 // MACRO CONSTANT TYPEDEF PROTYPES
 //--------------------------------------------------------------------+
@@ -119,15 +104,9 @@ void tud_resume_cb(void) {
 void cdc_task(void) {
   // connected() check for DTR bit
   // Most but not all terminal client set this when making connection
-  // if(tud_ready())
-  // {
-  //   printf("1-%d, %x\n", tud_ready(), tud_cdc_n_available(0));
-  // }
-  
-  if ( tud_cdc_connected() )
+  // if ( tud_cdc_connected() )
   {
     // connected and there are data available
-  printf("2\n");
     if (tud_cdc_available()) {
       // read data
       char buf[64];
