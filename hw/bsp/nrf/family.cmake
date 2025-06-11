@@ -109,15 +109,21 @@ endfunction()
 #    )
 #endfunction()
 
-
 function(family_configure_example TARGET RTOS)
-  # Board target
+
+
+# Board target
   if (NOT RTOS STREQUAL zephyr)
     add_board_target(board_${BOARD})
     target_link_libraries(${TARGET} PUBLIC board_${BOARD})
   endif ()
 
   family_configure_common(${TARGET} ${RTOS})
+
+  message(STATUS ">>> CMAKE_CURRENT_LIST_DIR = ${CMAKE_CURRENT_LIST_DIR}")
+  message(STATUS ">>> CMAKE_CURRENT_FUNCTION_LIST_DIR = ${CMAKE_CURRENT_FUNCTION_LIST_DIR}")
+  message(STATUS ">>> TARGET               = ${TARGET}")
+  message(STATUS ">>> BOARD                = ${BOARD}")
 
   #---------- Port Specific ----------
   # These files are built for each example since it depends on example's tusb_config.h
