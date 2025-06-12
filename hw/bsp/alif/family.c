@@ -98,18 +98,18 @@ void board_init(void) {
     *(volatile uint32_t*) 0x4900C004 |= 8; // 12_0 + 12_3 as output (blue + red LED)
     *(volatile uint32_t*) 0x49007004 |= 16; // 7_4 as output (green LED)
 
-    pin_set(GPIO12_PORT, PIN3, 0, 0);
-    pin_set(GPIO7_PORT, PIN4, 0, 0);
-    pin_set(GPIO12_PORT, PIN0, 0, 0);
-    pin_set(GPIO6_PORT, PIN2, 0, 0);
-    pin_set(GPIO6_PORT, PIN4, 0, 0);
-    pin_set(GPIO6_PORT, PIN6, 0, 0);
+//     pin_set(GPIO12_PORT, PIN3, 0, 0);
+//     pin_set(GPIO7_PORT, PIN4, 0, 0);
+//     pin_set(GPIO12_PORT, PIN0, 0, 0);
+//     pin_set(GPIO6_PORT, PIN2, 0, 0);
+//     pin_set(GPIO6_PORT, PIN4, 0, 0);
+//     pin_set(GPIO6_PORT, PIN6, 0, 0);
 
-    board_led_write(true);
+//     board_led_write(true);
 
-#if CFG_TUSB_OS == OPT_OS_ZEPHYR
-    IRQ_CONNECT(USB_ALIF_IRQ, 5, USB_IRQHandler, NULL, 0);
-#endif
+// #if CFG_TUSB_OS == OPT_OS_ZEPHYR
+//     IRQ_CONNECT(USB_ALIF_IRQ, 5, USB_IRQHandler, NULL, 0);
+// #endif
 }
 
 //--------------------------------------------------------------------+
@@ -118,12 +118,12 @@ void board_init(void) {
 void board_led_write(bool state) {
     (void) state;
 
-    pin_set_value(PIN3, state);
-    pin_set_value(PIN4, state);
-    pin_set_value(PIN0, state);
-    pin_set_value(PIN2, state);
-    pin_set_value(PIN4, state);
-    pin_set_value(PIN6, state);
+//     pin_set_value(PIN3, state);
+//     pin_set_value(PIN4, state);
+//     pin_set_value(PIN0, state);
+//     pin_set_value(PIN2, state);
+//     pin_set_value(PIN4, state);
+//     pin_set_value(PIN6, state);
 }
 
 uint32_t board_button_read(void) {
