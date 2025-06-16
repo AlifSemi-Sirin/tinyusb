@@ -28,9 +28,9 @@
   #define LOG_NO_ERROR(fmt, ...) ((void)0)
   #define LOG_NO_SHORT(fmt, ...) ((void)0)
   
-  #define LOG_ALIF_INFO  LOG_PRINT_INFO
+  #define LOG_ALIF_INFO  LOG_NO_INFO
   #define LOG_ALIF_ERROR LOG_PRINT_ERROR
-  #define LOG_ALIF_SHORT LOG_PRINT_SHORT
+  #define LOG_ALIF_SHORT LOG_NO_SHORT
       
   #define USB_NODE        DT_NODELABEL(usb0)
   #define USB_CTRL_BASE   DT_REG_ADDR(USB_NODE)
@@ -60,26 +60,6 @@
   static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t param);
  
  #include "device/dcd.h"
-
-#define HEX_DUMP_BYTES_PER_LINE 16
-
- #define TUSB_ALIF_DEBUG
- #define TUSB_ALIF_DEBUG_DEPTH (2048)
- 
- #if defined(TUSB_ALIF_DEBUG)
- #if (1 < TUSB_ALIF_DEBUG_DEPTH)
- #define LOG(...)      memset(logbuf[bi % TUSB_ALIF_DEBUG_DEPTH], ' ', 48);\
-                           snprintf(logbuf[(bi++) % TUSB_ALIF_DEBUG_DEPTH], 48, __VA_ARGS__);
- char logbuf[TUSB_ALIF_DEBUG_DEPTH][48];
- int bi = 0;
- #else
- #define LOG(...)      memset(logbuf, ' ', 48);\
-                           snprintf(logbuf, 48, __VA_ARGS__)
- char logbuf[48];
- #endif
- #else
- #define LOG(...)
- #endif
  
 #define MAX_LOGICAL_EP   8
 #define MAX_TRB_NUM      (MAX_LOGICAL_EP * 2)   // = 16 physical endpoints
