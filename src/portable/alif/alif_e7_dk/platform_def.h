@@ -11,22 +11,6 @@
 #include <soc_common.h>
 #include <soc_memory_map.h>    
 
-
-/* USB DMA on some MCUs can only access a specific SRAM region with restriction on alignment.
- * Tinyusb use follows macros to declare transferring memory so that they can be put
- * into those specific section.
- * e.g
- * - CFG_TUSB_MEM SECTION : __attribute__ (( section(".usb_ram") ))
- * - CFG_TUSB_MEM_ALIGN   : __attribute__ ((aligned(4)))
- */
-#ifndef CFG_TUSB_MEM_SECTION
-#define CFG_TUSB_MEM_SECTION __attribute__((section("usb_dma_buf")))
-#endif
-
-#ifndef CFG_TUSB_MEM_ALIGN
-#define CFG_TUSB_MEM_ALIGN __attribute__((aligned(32)))
-#endif
-
 // Base address of USB device controller
 #define USB_REG(offset) (USB_CTRL_BASE + (offset))
 
