@@ -200,11 +200,6 @@
 #define OPT_MCU_MAX32650         2402  ///< ADI MAX32650/1/2
 #define OPT_MCU_MAX78002         2403  ///< ADI MAX78002
 
-// Alif Semiconductor
-#define OPT_MCU_ALIF_E7_HP       2500  ///< Alif Semiconductor E7 Series HP Core
-#define OPT_MCU_ALIF_E7_HE       2501  ///< Alif Semiconductor E7 Series HE Core
-
-
 // Check if configured MCU is one of listed
 // Apply _TU_CHECK_MCU with || as separator to list of input
 #define _TU_CHECK_MCU(_m)    (CFG_TUSB_MCU == _m)

@@ -217,11 +217,9 @@ bool tu_edpt_validate(tusb_desc_endpoint_t const* desc_ep, tusb_speed_t speed, b
     }
 
     case TUSB_XFER_BULK:
-    if (speed == TUSB_SPEED_HIGH) {
-        printf("!-%d, %d, %d\n\r", desc_ep->bEndpointAddress, speed, max_packet_size);
+      if (speed == TUSB_SPEED_HIGH) {
         // Bulk highspeed must be EXACTLY 512
         TU_ASSERT(max_packet_size == 512);
-
       } else {
         // Bulk fullspeed can only be 8, 16, 32, 64
         if (is_host && max_packet_size == 512) {

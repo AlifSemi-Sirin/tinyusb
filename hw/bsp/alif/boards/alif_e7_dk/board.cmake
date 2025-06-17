@@ -7,6 +7,3 @@ message(STATUS "Using BOARD_LINKER_SCRIPT: ${BOARD_LINKER_SCRIPT}")
 
 function(update_board TARGET)
 endfunction()
-
-
-
