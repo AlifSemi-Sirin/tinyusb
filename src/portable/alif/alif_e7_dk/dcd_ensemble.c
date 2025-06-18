@@ -61,8 +61,7 @@
  
  #include "device/dcd.h"
  
-#define MAX_LOGICAL_EP   8
-#define MAX_TRB_NUM      (MAX_LOGICAL_EP * 2)   // = 16 physical endpoints
+#define MAX_TRB_NUM      TUP_DCD_ENDPOINT_MAX
  
 // Structs and Buffers --------------------------------------------------------
 #define EVT_BUF_SIZE  1024

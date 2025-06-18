@@ -544,13 +544,6 @@
   #define TUP_RHPORT_HIGHSPEED    1
   #define TUD_ENDPOINT_ONE_DIRECTION_ONLY
 
-//--------------------------------------------------------------------+
-// Alif
-//--------------------------------------------------------------------+
-#elif TU_CHECK_MCU(OPT_MCU_ALIF_E7_HE, OPT_MCU_ALIF_E7_HP)
-  #define TUP_DCD_ENDPOINT_MAX    8
-
-
 #endif
 
 //--------------------------------------------------------------------+
