@@ -22,13 +22,6 @@
 #define CLK_ENA_CLK20M     (1U << 22) /* Enable USB and 10M_CLK */
 #define CLK_ENA_CLK38P4M   (1U << 23) /* Enable HFOSC_CLK */
 
-
-
-// Option for tinyUSB porting
-#define TUD_OPT_RHPORT 0
-
-#define RTSS_FORCE_GLOBAL_CLEAN_INVALIDATE_THRESHOLD_SIZE (128*1024)
-
 // Structure for USB TRB (Transfer Request Block)
 typedef union {
 	uint32_t val;

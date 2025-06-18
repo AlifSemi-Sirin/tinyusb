@@ -86,8 +86,8 @@ static uint16_t _xfer_bytes[MAX_TRB_NUM];
  /// Private Functions ----------------------------------------------------------
  
  static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t type);
- static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint16_t par);
- static void _dcd_handle_devt(uint8_t evt, uint16_t info);
+ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep_index, uint8_t evt, uint8_t sts, uint16_t par);
+ static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info);
   
  /// API Extension --------------------------------------------------------------
  
@@ -305,9 +305,9 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
  
          // dispatch the right handler for the event type
          if (e.depevt.is_devt == 0) {// DEPEVT
-             _dcd_handle_depevt(e.depevt.ep, e.depevt.evt, e.depevt.sts, e.depevt.par);
+             _dcd_handle_depevt(rhport, e.depevt.ep, e.depevt.evt, e.depevt.sts, e.depevt.par);
          } else { // DEVT
-             _dcd_handle_devt(e.devt.evt, e.devt.info);
+             _dcd_handle_devt(rhport, e.devt.evt, e.devt.info);
          } 
  
          // consume one event
@@ -493,8 +493,6 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
  // notify the stack
 bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t total_bytes)
 {
-    (void) rhport;
-    
     // Compute physical endpoint index: (number << 1) | dir
     uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
 
@@ -535,7 +533,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
                 // STATUS IN stage
                 if (++_sts_stage == 2) {
                     _sts_stage = 0;
-                    dcd_event_xfer_complete(TUD_OPT_RHPORT,
+                    dcd_event_xfer_complete( rhport,
                                              tu_edpt_addr(0, TUSB_DIR_IN),
                                              0,
                                              XFER_RESULT_SUCCESS,
@@ -615,7 +613,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
  * \param sts       DEPEVT status field (used for “Not Ready” codes or other flags)
  * \param par       DEPEVT parameter field (typically unused for IN/OUT transfers)
  */
-static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint16_t par)
+static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep_index, uint8_t evt, uint8_t sts, uint16_t par)
  {
     if (!(ep_index < MAX_TRB_NUM)) {
         TU_MESS_FAILED();
@@ -638,7 +636,7 @@ static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint1
                 {
                     // SETUP stage finished: invalidate control buffer 
                     sys_cache_data_invd_range(_ctrl_buf, sizeof(_ctrl_buf));
-                    dcd_event_setup_received(TUD_OPT_RHPORT, _ctrl_buf, true);
+                    dcd_event_setup_received(rhport, _ctrl_buf, true);
                     break;
                 } 
 
@@ -646,13 +644,13 @@ static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint1
                 {
                      if (0 < _xfer_bytes[0]) {
                          sys_cache_data_invd_range((void*) _xfer_trb[0][0], _xfer_bytes[0]);
-                         dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_OUT),
+                         dcd_event_xfer_complete(rhport, tu_edpt_addr(0, TUSB_DIR_OUT),
                                                  _get_transfered_bytes(0),
                                                  XFER_RESULT_SUCCESS, true);
                      } else {
                          if (2 == ++_sts_stage) {
                              _sts_stage = 0;
-                             dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_OUT),
+                             dcd_event_xfer_complete(rhport, tu_edpt_addr(0, TUSB_DIR_OUT),
                                                      0, XFER_RESULT_SUCCESS, true);
  
                              // *(volatile uint32_t*) 0x4900C000 ^= 8; // [TEMP]
@@ -668,14 +666,14 @@ static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint1
              else if (ep_index == 1) 
              {
                  if (trbctl != TRBCTL_CTL_STAT2) { // STATUS IN notification is done at xfer request
-                     dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_IN),
+                     dcd_event_xfer_complete(rhport, tu_edpt_addr(0, TUSB_DIR_IN),
                                              _get_transfered_bytes(1),
                                              XFER_RESULT_SUCCESS, true);
                         
                  } else {
                      if (2 == ++_sts_stage) {
                          _sts_stage = 0;
-                         dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(0, TUSB_DIR_IN),
+                         dcd_event_xfer_complete(rhport, tu_edpt_addr(0, TUSB_DIR_IN),
                                                  0, XFER_RESULT_SUCCESS, true);
  
                          // *(volatile uint32_t*) 0x4900C000 ^= 8; // [TEMP]
@@ -690,13 +688,13 @@ static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint1
                      sys_cache_data_invd_range((void*) _xfer_trb[ep_index][0],
                                                    ALIF_MAX_PCK_SIZE - _xfer_trb[ep_index][2]);
                                                  //   _xfer_bytes[ep] - _xfer_trb[ep][2]);
-                 dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep_index >> 1, ep_index & 1),
+                 dcd_event_xfer_complete(rhport, tu_edpt_addr(ep_index >> 1, ep_index & 1),
                                          ALIF_MAX_PCK_SIZE - _xfer_trb[ep_index][2],
                                          XFER_RESULT_SUCCESS, true);
                  } 
                  else
                  {
-                    dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep_index >> 1, ep_index & 1),
+                    dcd_event_xfer_complete(rhport, tu_edpt_addr(ep_index >> 1, ep_index & 1),
                                          _get_transfered_bytes(ep_index),
                                          XFER_RESULT_SUCCESS, true);
                  }
@@ -754,7 +752,7 @@ static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint1
      }
  }
  
- static void _dcd_handle_devt(uint8_t evt, uint16_t info)
+ static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info)
  {
     // LOG_ALIF_INFO("DEVT evt%u info %u", evt, info);
 
@@ -767,7 +765,7 @@ static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint1
             
             // ToDo : FULL/HIGH Speed
             sys_set_bits(DCFG_REG, DCFG_SPEED(ALIF_DEVSPD_SETTING));  // 0x1: Full-speed (USB 2.0 PHY clock is 30 MHz or 60 MHz)
-            dcd_event_bus_reset(TUD_OPT_RHPORT, ALIF_TUSB_SPEED, true); // [TODO] actual speed
+            dcd_event_bus_reset(rhport, ALIF_TUSB_SPEED, true); // [TODO] actual speed
          } break;
          case DEVT_CONNECTDONE: {
              // read conn speed from dsts
@@ -788,13 +786,13 @@ static void _dcd_handle_depevt(uint8_t ep_index, uint8_t evt, uint8_t sts, uint1
             // LOG_ALIF_INFO("Link status change");
              switch (info) {
                  case 0x3: { // suspend (L2)
-                     dcd_event_bus_signal(TUD_OPT_RHPORT, DCD_EVENT_SUSPEND, true);
+                     dcd_event_bus_signal(rhport, DCD_EVENT_SUSPEND, true);
                  } break;
                  case 0x4: { // disconnected
-                     dcd_event_bus_signal(TUD_OPT_RHPORT, DCD_EVENT_UNPLUGGED, true);
+                     dcd_event_bus_signal(rhport, DCD_EVENT_UNPLUGGED, true);
                  } break;
                  case 0xF: { // resume
-                     dcd_event_bus_signal(TUD_OPT_RHPORT, DCD_EVENT_RESUME, true);
+                     dcd_event_bus_signal(rhport, DCD_EVENT_RESUME, true);
                  } break;
                  default: {}
              }
