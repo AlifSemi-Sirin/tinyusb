@@ -58,8 +58,21 @@ function(add_board_target BOARD_TARGET)
     ${ALIF_CMSIS}/Device/core/${MCU_VARIANT}/config
     ${ALIF_CMSIS}/drivers/include
     ${CMSIS_DIR}/CMSIS/Core/Include
-    ${TOP}/hw/bsp/alif/boards/alif_e7_dk/
+    ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD}
     )
+
+  # Add core definitions to board target
+  if(CORE_M55_HP)
+    target_compile_definitions(${BOARD_TARGET} PUBLIC CORE_M55_HP)
+    target_compile_definitions(${BOARD_TARGET} PUBLIC M55_HP)
+    message(STATUS "Adding CORE_M55_HP to board target ${BOARD_TARGET}")
+  endif()
+  
+  if(CORE_M55_HE)
+    target_compile_definitions(${BOARD_TARGET} PUBLIC CORE_M55_HE)
+    target_compile_definitions(${BOARD_TARGET} PUBLIC M55_HE)
+    message(STATUS "Adding CORE_M55_HE to board target ${BOARD_TARGET}")
+  endif()
 
   update_board(${BOARD_TARGET})
 
@@ -83,6 +96,45 @@ function(add_board_target BOARD_TARGET)
 
 endfunction()
 
+function(configure_freertos)
+
+  if(CORE_M55_HP)
+    add_compile_definitions(
+      CORE_M55_HP
+      M55_HP
+      ) 
+  else()
+    add_compile_definitions(
+      CORE_M55_HE
+      M55_HE
+      ) 
+  endif()
+
+  set(FREERTOS_HEAP 4 CACHE STRING "FreeRTOS heap implementation")
+  set(FREERTOS_CONFIG_FILE_DIRECTORY ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/FreeRTOSConfig CACHE STRING "FreeRTOS configuration file")
+
+  # WORKAROUND: Add the board folder to the include path for the entire directory.
+  # The FreeRTOS kernel is built as a separate library and does not automatically
+  # inherit the board's include path where RTE_Components.h is located.
+  # This ensures the kernel compilation can find the required headers.
+  # There is not such problem with latest FreeRTOSKernel but 10.5.1 is not working
+  # without setting FREERTOS_CONFIG_FILE_DIRECTORY.
+  include_directories(
+    ${ALIF_CMSIS}/Alif_CMSIS/Include
+    ${ALIF_CMSIS}/drivers/include
+    ${ALIF_CMSIS}/Device/common/config
+    ${ALIF_CMSIS}/Device/common/include
+    ${ALIF_CMSIS}/Device/E7/AE722F80F55D5XX
+    ${ALIF_CMSIS}/Device/core/${MCU_VARIANT}
+    ${ALIF_CMSIS}/Device/core/${MCU_VARIANT}/include
+    ${ALIF_CMSIS}/Device/core/${MCU_VARIANT}/config
+    ${ALIF_CMSIS}/drivers/include
+    ${CMSIS_DIR}/CMSIS/Core/Include
+    ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD}
+    )
+
+endfunction()
+
 
 function(family_configure_example TARGET RTOS)
 
@@ -92,8 +144,12 @@ function(family_configure_example TARGET RTOS)
     target_link_libraries(${TARGET} PUBLIC board_${BOARD})
   endif ()
 
+  # Configure FreeRTOS heap if using FreeRTOS
+  if (RTOS STREQUAL "freertos")
+    configure_freertos()
+  endif ()
+
   target_compile_definitions(${TARGET} PUBLIC
-    CFG_TUSB_MCU=OPT_MCU_NONE
     CFG_TUSB_RHPORT0_MODE=OPT_MODE_DEVICE
     TUP_DCD_ENDPOINT_MAX=8
     TUD_OPT_RHPORT=0
@@ -132,22 +188,6 @@ function(family_configure_example TARGET RTOS)
   target_sources(${TARGET} PRIVATE
     ${TOP}/src/portable/alif/alif_e7_dk/dcd_ensemble.c
     )
-
-  if(CORE_M55_HP)
-    target_compile_definitions(${TARGET} PUBLIC CORE_M55_HP)
-    target_compile_definitions(${TARGET} PUBLIC M55_HP)
-    add_compile_definitions(CORE_M55_HP)
-    add_compile_definitions(M55_HP)
-    message(STATUS "CORE_M55_HP is defined and added")
-  endif()
-  
-  if(CORE_M55_HE)
-    target_compile_definitions(${TARGET} PUBLIC CORE_M55_HE)
-    target_compile_definitions(${TARGET} PUBLIC M55_HE)
-    add_compile_definitions(CORE_M55_HP)
-    add_compile_definitions(M55_HE)
-    message(STATUS "CORE_M55_HE is defined and added")
-  endif()
 
   # Workaround for Ensemble
   # Remove -ffunction-sections from global flags for all relevant languages

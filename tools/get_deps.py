@@ -212,6 +212,10 @@ deps_optional = {
                          'lpc55'],
 }
 
+# Alif workaround as currently the latest FreeRTOS is not supported
+if 'alif' in sys.argv:
+    deps_mandatory['lib/FreeRTOS-Kernel'][1] = 'def7d2df2b0506d3d249334974f51e427c17a41c'
+
 # combined 2 deps
 deps_all = {**deps_mandatory, **deps_optional}
 
