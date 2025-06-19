@@ -12,8 +12,8 @@
 
 #if CFG_TUD_ENABLED
 
-#include "dcd_ensemble_def.h"
 #include "device/dcd.h"
+#include "dcd_ensemble_def.h"
 
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR
 
@@ -533,7 +533,7 @@ void dcd_disconnect(uint8_t rhport)
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
   sys_clear_bits(DCTL_REG, DCTL_RUN_STOP);
 #else
-  sys_clear_bits(DCTL_REG, DCTL_RUN_STOP);
+  udev->dctl_b.run_stop = 0;
 #endif
 }
 
@@ -1348,3 +1348,4 @@ static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t typ
 #endif
 }
 
+#endif

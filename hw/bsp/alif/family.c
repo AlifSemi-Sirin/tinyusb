@@ -123,7 +123,6 @@ int board_uart_write(void const* buf, int len) {
 #if CFG_TUSB_OS == OPT_OS_NONE
 
 void SysTick_Handler(void);
-void USB_IRQHandler(void);
 
 volatile uint32_t system_ticks = 0;
 
@@ -131,13 +130,18 @@ void SysTick_Handler(void) {
   system_ticks++;
 }
 
+uint32_t board_millis(void) {
+  return system_ticks;
+}
+#endif
+
+#if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
+
+void USB_IRQHandler(void);
+
 void USB_IRQHandler(void)
 {
     dcd_int_handler(0);
-}
-
-uint32_t board_millis(void) {
-  return system_ticks;
 }
 
 int _close(int val);
