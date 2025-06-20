@@ -31,73 +31,61 @@ message(STATUS ">>> TOP                              = ${TOP}")
 message(STATUS ">>> Selected MCU_VARIANT             = ${MCU_VARIANT}")
 
 # Board target
-  if (NOT RTOS STREQUAL zephyr)
-    add_board_target(board_${BOARD})
-    target_link_libraries(${TARGET} PUBLIC board_${BOARD})
-  endif ()
+if (NOT RTOS STREQUAL zephyr)
+  add_board_target(board_${BOARD})
+  target_link_libraries(${TARGET} PUBLIC board_${BOARD})
+endif ()
 
-  # family_configure_common(${TARGET} ${RTOS})
+# USB DMA section configuration for Zephyr builds
+target_compile_definitions(${TARGET} PUBLIC
+  CFG_TUSB_RHPORT0_MODE=OPT_MODE_DEVICE
+  TUD_OPT_RHPORT=0  
+  TUP_DCD_ENDPOINT_MAX=8
+  BOARD_TUD_MAX_SPEED=OPT_MODE_HIGH_SPEED
+  CFG_TUSB_MEM_SECTION=__attribute__\(\(section\(\".usb_dma_buf\"\)\)\)
+  CFG_TUSB_MEM_ALIGN=TU_ATTR_ALIGNED\(32\)
+)
 
-  #---------- Port Specific ----------
-  # These files are built for each example since it depends on example's tusb_config.h
-  target_sources(${TARGET} PRIVATE
-    # BSP
-    ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/family.c
-    ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../board.c
-    # HAL
-    # ${HAL_DIR}/common/src/system.c
+family_configure_common(${TARGET} ${RTOS})
 
-    )
-    
-  target_include_directories(${TARGET} PUBLIC
-    # family, hw, board
-    ${CMAKE_CURRENT_FUNCTION_LIST_DIR}
-    ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../
-    ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD}
-    )
-  if (RTOS STREQUAL zephyr AND DEFINED BOARD_ALIAS AND NOT BOARD STREQUAL BOARD_ALIAS)
-    target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD_ALIAS})
-  endif ()
+#---------- Port Specific ----------
+# These files are built for each example since it depends on example's tusb_config.h
+target_sources(${TARGET} PRIVATE
+  # BSP
+  ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/family.c
+  ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../board.c
+  # HAL
+  # ${HAL_DIR}/common/src/system.c
+  )
+  
+target_include_directories(${TARGET} PUBLIC
+  # family, hw, board
+  ${CMAKE_CURRENT_FUNCTION_LIST_DIR}
+  ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../
+  ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD}
+  )
+if (RTOS STREQUAL zephyr AND DEFINED BOARD_ALIAS AND NOT BOARD STREQUAL BOARD_ALIAS)
+  target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD_ALIAS})
+endif ()
  
-  # USB DMA section configuration for Zephyr builds
-  if (RTOS STREQUAL zephyr)
-    message(STATUS ">>> Enabling CFG_TUSB_MEM_SECTION with section(\"usb_dma_buf\") for Zephyr")
-    target_compile_definitions(${TARGET} PUBLIC
-      TUP_DCD_ENDPOINT_MAX=8
-      BOARD_TUD_MAX_SPEED=OPT_MODE_HIGH_SPEED
-      CFG_TUSB_MEM_SECTION=__attribute__\(\(section\(\".usb_dma_buf\"\)\)\)
-      CFG_TUSB_MEM_ALIGN=TU_ATTR_ALIGNED\(32\)
-    )
-  endif()
-
 # Map MCU_VARIANT to compile definitions and TinyUSB option                   #
-if (MCU_VARIANT STREQUAL "ENSEMBLE7_HE")
-    message(STATUS "Building for CORE_M55_HE")
+if (CORE_M55_HE)
     add_compile_definitions(CORE_M55_HE)
     # set macros for CMSIS
-    add_compile_definitions(M55_HE)
-    family_add_tinyusb(${TARGET} OPT_MCU_ALIF_E7_HE)
-    target_sources(${TARGET} PRIVATE
-        # ${TOP}/src/portable/alif/alif_e7_dk_rtss_he/dcd_ensemble.c
-    )
-    
-  elseif (MCU_VARIANT STREQUAL "ENSEMBLE7_HP")
-    message(STATUS "Building for CORE_M55_HP")
+    add_compile_definitions(M55_HE)    
+  elseif (CORE_M55_HP)
     add_compile_definitions(CORE_M55_HP)
     # set macros for CMSIS
-    add_compile_definitions(M55_HP)
-    # Add TinyUSB target and port source
-    family_add_tinyusb(${TARGET} OPT_MCU_ALIF_E7_HP)
-    target_sources(${TARGET} PRIVATE
-      ${TOP}/src/portable/alif/alif_e7_dk/dcd_ensemble.c
-      )
-    zephyr_include_directories(
-        ${ZEPHYR_BASE}/soc/alif/ensemble/common
-    )
-    
+    add_compile_definitions(M55_HP)   
 else()
   message(FATAL_ERROR "Unsupported MCU_VARIANT='${MCU_VARIANT}'.")
 endif()
+
+target_sources(${TARGET} PRIVATE
+  ${TOP}/src/portable/alif/alif_e7_dk/dcd_ensemble.c
+)
+
+family_add_tinyusb(${TARGET} OPT_MCU_NONE)
 
 # Flashing
 family_flash_jlink(${TARGET})
