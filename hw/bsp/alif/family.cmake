@@ -58,6 +58,17 @@ message(STATUS ">>> Selected MCU_VARIANT             = ${MCU_VARIANT}")
   if (RTOS STREQUAL zephyr AND DEFINED BOARD_ALIAS AND NOT BOARD STREQUAL BOARD_ALIAS)
     target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD_ALIAS})
   endif ()
+ 
+  # USB DMA section configuration for Zephyr builds
+  if (RTOS STREQUAL zephyr)
+    message(STATUS ">>> Enabling CFG_TUSB_MEM_SECTION with section(\"usb_dma_buf\") for Zephyr")
+    target_compile_definitions(${TARGET} PUBLIC
+      TUP_DCD_ENDPOINT_MAX=8
+      BOARD_TUD_MAX_SPEED=OPT_MODE_HIGH_SPEED
+      CFG_TUSB_MEM_SECTION=__attribute__\(\(section\(\".usb_dma_buf\"\)\)\)
+      CFG_TUSB_MEM_ALIGN=TU_ATTR_ALIGNED\(32\)
+    )
+  endif()
 
 # Map MCU_VARIANT to compile definitions and TinyUSB option                   #
 if (MCU_VARIANT STREQUAL "ENSEMBLE7_HE")
@@ -88,8 +99,7 @@ else()
   message(FATAL_ERROR "Unsupported MCU_VARIANT='${MCU_VARIANT}'.")
 endif()
 
-  # Flashing
-#  family_add_bin_hex(${TARGET})
-  family_flash_jlink(${TARGET})
-#  family_flash_adafruit_nrfutil(${TARGET})
+# Flashing
+family_flash_jlink(${TARGET})
+
 endfunction()

@@ -13,8 +13,6 @@
 #if CFG_TUD_ENABLED
 
   #include "platform_def.h"
-
-  #pragma message("Building for Zephyr RTOS")
   #include <zephyr/cache.h>
   #include <zephyr/devicetree.h>
   #include <zephyr/kernel.h>
