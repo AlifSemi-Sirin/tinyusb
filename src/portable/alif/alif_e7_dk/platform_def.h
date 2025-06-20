@@ -229,6 +229,30 @@
 #define PWR_CTRL_TX_DPHY_ISO       BIT(1)  /* TX MIPI DPHY Isolation Enable [1] */
 #define PWR_CTRL_TX_DPHY_PWR_MASK  BIT(0)  /* TX MIPI DPHY Power Mask [0] */
 
+/* CLK_ENA Register Bit Definitions */
+#define CLK_ENA_SYSPLL      BIT(0)  /* Enable SYSPLL_CLK */
+#define CLK_ENA_CPUPLL      BIT(4)  /* Enable CPUPLL_CLK */
+#define CLK_ENA_ES0         BIT(12) /* Enable RTSS_HP_CLK */
+#define CLK_ENA_ES1         BIT(13) /* Enable RTSS_HE_CLK */
+#define CLK_ENA_HFXO        BIT(18) /* Enable clock to the HFXO_OUT pin */
+#define CLK_ENA_CLK160M     BIT(20) /* Enable 160M_CLK */
+#define CLK_ENA_CLK100M     BIT(21) /* Enable 100M_CLK */
+#define CLK_ENA_CLK20M      BIT(22) /* Enable USB_CLK and 10M_CLK */
+#define CLK_ENA_CLK38P4M    BIT(23) /* Enable HFOSC_CLK */
+#define CLK_ENA_CVM         BIT(24) /* Enable SRAM0 clock */
+#define CLK_ENA_OCVM        BIT(28) /* Enable SRAM1 clock */
+
+/* Peripheral Clock Enable Register Bit Definitions */
+#define PERIPH_CLK_ENA_CPI_CKEN     BIT(0)  /* Enable clock for CPI */
+#define PERIPH_CLK_ENA_DPI_CKEN     BIT(1)  /* Enable clock for DPI controller (CDC) */
+#define PERIPH_CLK_ENA_DMA_CKEN     BIT(4)  /* Enable clock for DMA0 */
+#define PERIPH_CLK_ENA_GPU_CKEN     BIT(8)  /* Enable clock for GPU2D */
+#define PERIPH_CLK_ENA_ETH_CKEN     BIT(12) /* Enable clock for ETH */
+#define PERIPH_CLK_ENA_SDC_CKEN     BIT(16) /* Enable clock for SDMMC */
+#define PERIPH_CLK_ENA_USB_CKEN     BIT(20) /* Enable clock for USB */
+#define PERIPH_CLK_ENA_CSI_CKEN     BIT(24) /* Enable clock for CSI */
+#define PERIPH_CLK_ENA_DSI_CKEN     BIT(28) /* Enable clock for DSI */
+
 /* GSBUSCFG0 Register Bit Definitions */
 #define GSBUSCFG0_INCRBRSTENA    BIT(0) /* INCR burst type enable */
 #define GSBUSCFG0_INCR4BRSTENA   BIT(1) /* INCR4 burst type enable */

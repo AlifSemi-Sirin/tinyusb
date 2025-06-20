@@ -12,7 +12,6 @@
 
 #if CFG_TUD_ENABLED
 
-  #include "dcd_ensemble.h"
   #include "platform_def.h"
 
   #pragma message("Building for Zephyr RTOS")
@@ -39,6 +38,9 @@
   #define DEPEVT_STS_NOTREADY_MASK 0x0B
   #define DEPEVT_STS_NOTREADY_CODE 0x02
 
+
+  #define CONFIG_USB_DEVICE_HIGH_SPEED// ALIF USB HIGH-speed mode activated
+
   #if defined(CONFIG_USB_DEVICE_HIGH_SPEED)
     #define ALIF_DEVSPD_SETTING 0x0 /* High-speed */
     #define ALIF_TUSB_SPEED TUSB_SPEED_HIGH
@@ -56,12 +58,7 @@
   #define XHC_REG_RD(addr) sys_read32((addr))
   #define XHC_REG_WR(addr, val) sys_write32((val), (addr))
 
-// prototype for the functions
-static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t param);
-
   #include "device/dcd.h"
-
-  #define MAX_TRB_NUM TUP_DCD_ENDPOINT_MAX
 
   // Structs and Buffers --------------------------------------------------------
   #define EVT_BUF_SIZE 1024
@@ -74,9 +71,9 @@ __aligned(32) CFG_TUSB_MEM_SECTION
     static uint8_t _ctrl_buf[CTRL_BUF_SIZE];// [TODO] runtime alloc
 
 __aligned(32) CFG_TUSB_MEM_SECTION
-    static uint32_t _xfer_trb[MAX_TRB_NUM][4];// [TODO] runtime alloc
+    static uint32_t _xfer_trb[TUP_DCD_ENDPOINT_MAX][4];// [TODO] runtime alloc
 
-static uint16_t _xfer_bytes[MAX_TRB_NUM];
+static uint16_t _xfer_bytes[TUP_DCD_ENDPOINT_MAX];
 
 static volatile uint32_t *_evnt_tail;
 static bool _ctrl_long_data = false;
@@ -90,8 +87,34 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep_index, uint8_t evt, ui
 static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info);
 
 /// API Extension --------------------------------------------------------------
-
+static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t param);
 void dcd_uninit(void);
+
+// Structure for USB TRB (Transfer Request Block)
+typedef union {
+  uint32_t val;
+  struct {
+    uint32_t is_devt : 1; // [0]     0 = DEPEVT, 1 = DEVT
+    uint32_t ep : 5;      // [5:1]   Physical Endpoint Number (0–31)
+    uint32_t evt : 4;     // [9:6]   Event Type
+                          //         0x1 = XferComplete
+                          //         0x2 = XferInProgress
+                          //         0x3 = XferNotReady
+                          //         0x6 = StreamEvt
+                          //         0x7 = EPCmdCmplt
+    uint32_t reserved : 2;// [11:10] Reserved
+    uint32_t sts : 4;     // [15:12] Event-specific status (meaning varies by type)
+    uint32_t par : 16;    // [31:16] Stream ID, IsoMicroFrameNum, etc.
+  } depevt;
+
+  struct {
+    uint32_t sig : 8;      // [7:0]   Always 1/0 for DEVT/(Device-specific event marker)
+    uint32_t evt : 5;      // [12:8]  Event Type (see below)
+    uint32_t reserved1 : 3;// [15:13] Reserved
+    uint32_t info : 9;     // [24:16] Event-specific information (e.g., link state)
+    uint32_t reserved2 : 7;// [31:25] Reserved
+  } devt;
+} evt_t;
 
 // helpers
 static inline uint32_t _get_transfered_bytes(uint8_t ep) {
@@ -586,7 +609,7 @@ void dcd_uninit(void) {
  * \param par       DEPEVT parameter field (typically unused for IN/OUT transfers)
  */
 static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep_index, uint8_t evt, uint8_t sts, uint16_t par) {
-  if (!(ep_index < MAX_TRB_NUM)) {
+  if (!(ep_index < TUP_DCD_ENDPOINT_MAX)) {
     TU_MESS_FAILED();
     TU_BREAKPOINT();
     return;
@@ -776,12 +799,6 @@ static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info) {
  * \return      Status returned by _dcd_cmd_wait (0 = success)
  */
 static uint8_t _dcd_start_xfer(uint8_t ep, void *buf, uint32_t size, uint8_t type) {
-  // if(ep >= MAX_TRB_NUM) {
-  //     LOG_ALIF_ERROR("Invalid ep %u", ep);
-  //     return 1;
-  // }
-  // LOG_ALIF_SHORT("-->> ep=%u, size=%u, type=%u", ep, size, type);
-
   /* Prevent races between programming TRB and ISR handling */
   NVIC_DisableIRQ(USB_ALIF_IRQ);
 
