@@ -4,8 +4,11 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#ifndef PLATFORM_DEF_H
-#define PLATFORM_DEF_H
+#ifndef DCD_ENSEMBLE_DEF_H
+#define DCD_ENSEMBLE_DEF_H
+
+
+#if CFG_TUSB_OS == OPT_OS_ZEPHYR
 
 #include <zephyr/sys/util.h> // for BIT macros
 #include <soc_common.h>
@@ -290,6 +293,8 @@
 /* USB_CTRL2 Register @ Offset 0xC19C Global User Control Register 2 */
 #define GUCTL2_RST_ACTBITLATER  BIT(14) /* Reset Active Bit Later */
 
+#endif
+
 // DEPEVT event types
 enum {
 	// reserved
@@ -349,4 +354,4 @@ enum {
 	TRBCTL_NORMAL_ZLP
 } TRBCTL;
 
-#endif /* PLATFORM_DEF_H */
+#endif /* DCD_ENSEMBLE_DEF_H */

@@ -12,7 +12,7 @@
 
 #if CFG_TUD_ENABLED
 
-  #include "platform_def.h"
+  #include "dcd_ensemble_def.h"
   #include <zephyr/cache.h>
   #include <zephyr/devicetree.h>
   #include <zephyr/kernel.h>
