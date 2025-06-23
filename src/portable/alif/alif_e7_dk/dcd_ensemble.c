@@ -81,7 +81,7 @@ static uint32_t _sts_stage = 0;
 /// Private Functions ----------------------------------------------------------
 
 static uint8_t _dcd_start_xfer(uint8_t ep, void *buf, uint32_t size, uint8_t type);
-static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep_index, uint8_t evt, uint8_t sts, uint16_t par);
+static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep_index, uint8_t evt, uint8_t sts);
 static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info);
 
 /// API Extension --------------------------------------------------------------
@@ -151,11 +151,11 @@ static inline void disable_usb_phy_isolation(void) {
   sys_clear_bits(VBAT_PWR_CTRL, PWR_CTRL_UPHY_ISO);
 }
 
-static inline void usb_ctrl2_phy_power_on_reset_set() {
+static inline void usb_ctrl2_phy_power_on_reset_set(void) {
   sys_set_bits(EXPMST_USB_CTRL2, USB_CTRL2_POR_RST_MASK);
 }
 
-static inline void usb_ctrl2_phy_power_on_reset_clear() {
+static inline void usb_ctrl2_phy_power_on_reset_clear(void) {
   sys_clear_bits(EXPMST_USB_CTRL2, USB_CTRL2_POR_RST_MASK);
 }
 
@@ -314,7 +314,7 @@ void dcd_int_handler(uint8_t rhport) {
 
     // dispatch the right handler for the event type
     if (e.depevt.is_devt == 0) {// DEPEVT
-      _dcd_handle_depevt(rhport, e.depevt.ep, e.depevt.evt, e.depevt.sts, e.depevt.par);
+      _dcd_handle_depevt(rhport, e.depevt.ep, e.depevt.evt, e.depevt.sts);
     } else {// DEVT
       _dcd_handle_devt(rhport, e.devt.evt, e.devt.info);
     }
@@ -354,26 +354,31 @@ void dcd_set_address(uint8_t rhport, uint8_t dev_addr) {
 
 // Called to remote wake up host when suspended (e.g hid keyboard)
 void dcd_remote_wakeup(uint8_t rhport) {
+  (void) rhport;
+
   LOG_ALIF_INFO("%010u >%s", DWT->CYCCNT, __func__);
 }
 
 // Connect by enabling internal pull-up resistor on D+/D-
 void dcd_connect(uint8_t rhport) {
+  (void) rhport;
+
   // [TODO] clear all xfers and eps first
   sys_set_bits(DCTL_REG, DCTL_RUN_STOP);
-  (void) rhport;
 }
 
 // Disconnect by disabling internal pull-up resistor on D+/D-
 void dcd_disconnect(uint8_t rhport) {
+  (void) rhport;
+
   // [TODO] clear all xfers and eps first
   sys_clear_bits(DCTL_REG, DCTL_RUN_STOP);
-
-  (void) rhport;
 }
 
 // Enable/Disable Start-of-frame interrupt. Default is disabled
 void dcd_sof_enable(uint8_t rhport, bool en) {
+  (void) rhport;
+
   LOG_ALIF_INFO("%010u >%s", DWT->CYCCNT, __func__);
 }
 
@@ -382,7 +387,8 @@ void dcd_sof_enable(uint8_t rhport, bool en) {
 // Invoked when a control transfer's status stage is complete.
 // May help DCD to prepare for next control transfer, this API is optional.
 void dcd_edpt0_status_complete(uint8_t rhport, tusb_control_request_t const *request) {
-  // LOG_ALIF_INFO("%010u >%s", DWT->CYCCNT, __func__);
+  (void) rhport;
+  (void) request;
 
   _ctrl_long_data = false;
   _dcd_start_xfer(TUSB_DIR_OUT, _ctrl_buf, 8, TRBCTL_CTL_SETUP);
@@ -396,8 +402,7 @@ void dcd_edpt0_status_complete(uint8_t rhport, tusb_control_request_t const *req
 // helper methods above. It will likely change what registers you are setting.
 // Also make sure to enable endpoint specific interrupts.
 bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const *desc_ep) {
-  // LOG_ALIF_INFO(" ep %02x, max packet size %d, xfer type %d",
-  //        desc_ep->bEndpointAddress, desc_ep->wMaxPacketSize, desc_ep->bmAttributes.xfer);
+  (void) rhport;
 
   if (TUSB_XFER_ISOCHRONOUS == desc_ep->bmAttributes.xfer)
     return false;
@@ -562,12 +567,10 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t *buffer, uint16_t to
   return true;
 }
 
-// Submit a transfer using fifo, When complete dcd_event_xfer_complete() is invoked to notify the stack
-// This API is optional, may be useful for register-based for transferring data.
-bool dcd_edpt_xfer_fifo(uint8_t rhport, uint8_t ep_addr, tu_fifo_t *ff, uint16_t total_bytes) TU_ATTR_WEAK;
-
 // Stall endpoint, any queuing transfer should be removed from endpoint
 void dcd_edpt_stall(uint8_t rhport, uint8_t ep_addr) {
+  (void) rhport;
+
   // DEPSSTALL command
   uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
 
@@ -583,10 +586,9 @@ void dcd_edpt_stall(uint8_t rhport, uint8_t ep_addr) {
 // This API never calls with control endpoints, since it is auto cleared when
 // receiving setup packet
 void dcd_edpt_clear_stall(uint8_t rhport, uint8_t ep_addr) {
-  // DEPCSTALL command
+  (void) rhport;
 
   uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
-
   (void) usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPCSTALL, 0);
 }
 
@@ -606,7 +608,7 @@ void dcd_uninit(void) {
  * \param sts       DEPEVT status field (used for “Not Ready” codes or other flags)
  * \param par       DEPEVT parameter field (typically unused for IN/OUT transfers)
  */
-static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep_index, uint8_t evt, uint8_t sts, uint16_t par) {
+static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep_index, uint8_t evt, uint8_t sts) {
   if (!(ep_index < TUP_DCD_ENDPOINT_MAX)) {
     TU_MESS_FAILED();
     TU_BREAKPOINT();

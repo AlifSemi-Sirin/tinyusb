@@ -46,7 +46,7 @@ target_compile_definitions(${TARGET} PUBLIC
   TUD_OPT_RHPORT=0  
   TUP_DCD_ENDPOINT_MAX=8
   BOARD_TUD_MAX_SPEED=OPT_MODE_HIGH_SPEED
-  CFG_TUSB_MEM_SECTION=__attribute__\(\(section\(\".usb_dma_buf\"\)\)\)
+  CFG_TUSB_MEM_SECTION=__attribute__\(\(section\(\"usb_dma_buf\"\)\)\)
   CFG_TUSB_MEM_ALIGN=TU_ATTR_ALIGNED\(32\)
 )
 
