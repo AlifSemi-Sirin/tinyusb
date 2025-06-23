@@ -57,9 +57,76 @@
 #define XHC_REG_RD(addr) sys_read32((addr))
 #define XHC_REG_WR(addr, val) sys_write32((val), (addr))
 
+  // Structs and Buffers --------------------------------------------------------
+  #define EVT_BUF_SIZE 1024
+  #define CTRL_BUF_SIZE 64
+
+__aligned(4096) CFG_TUSB_MEM_SECTION
+    static uint32_t _evnt_buf[EVT_BUF_SIZE];
+
+__aligned(32) CFG_TUSB_MEM_SECTION
+    static uint8_t _ctrl_buf[CTRL_BUF_SIZE];// [TODO] runtime alloc
+
+__aligned(32) CFG_TUSB_MEM_SECTION
+    static uint32_t _xfer_trb[TUP_DCD_ENDPOINT_MAX][4];// [TODO] runtime alloc
+
+static uint16_t _xfer_bytes[TUP_DCD_ENDPOINT_MAX];
+
+static volatile uint32_t *_evnt_tail;
+static bool _ctrl_long_data = false;
+static bool _xfer_cfgd = false;
+static uint32_t _sts_stage = 0;
+
+
 /// API Extension --------------------------------------------------------------
 static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t param);
 
+#else
+
+#include "RTE_Components.h"
+#include CMSIS_device_header
+
+#include "clk.h"
+#include "power.h"
+
+#if defined(TUSB_ALIF_DEBUG)
+#if (1 < TUSB_ALIF_DEBUG_DEPTH)
+#define LOG(...)      memset(logbuf[bi % TUSB_ALIF_DEBUG_DEPTH], ' ', 48);\
+                          snprintf(logbuf[(bi++) % TUSB_ALIF_DEBUG_DEPTH], 48, __VA_ARGS__);
+char logbuf[TUSB_ALIF_DEBUG_DEPTH][48];
+int bi = 0;
+#else
+#define LOG(...)      memset(logbuf, ' ', 48);\
+                          snprintf(logbuf, 48, __VA_ARGS__)
+char logbuf[48];
+#endif
+#else
+#define LOG(...)
+#endif
+
+static uint8_t _dcd_cmd_wait(uint8_t ep, uint8_t typ, uint16_t param);
+
+static uint16_t _xfer_bytes[8];
+
+static uint32_t _sts_stage = 0;
+
+static uint32_t  _evnt_buf[1024] CFG_TUSB_MEM_SECTION __attribute__((aligned(4096))); // [TODO] runtime alloc
+
+static uint8_t  _ctrl_buf[64] CFG_TUSB_MEM_SECTION __attribute__((aligned(32))); // [TODO] runtime alloc
+static uint32_t _xfer_trb[8][4] CFG_TUSB_MEM_SECTION __attribute__((aligned(32))); // [TODO] runtime alloc
+
+#endif
+
+
+/// Private Functions ----------------------------------------------------------
+
+static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t type);
+static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par);
+static void _dcd_handle_devt(uint8_t evt, uint16_t info);
+
+void dcd_uninit(void);
+
+#if CFG_TUSB_OS == OPT_OS_ZEPHYR
 // helpers
 static inline uint32_t _get_transfered_bytes(uint8_t ep) {
   return _xfer_bytes[ep] - (_xfer_trb[ep][2] & 0x00FFFFFF);
@@ -104,55 +171,9 @@ static inline void usb_ctrl2_phy_power_on_reset_set() {
 static inline void usb_ctrl2_phy_power_on_reset_clear() {
   sys_clear_bits(EXPMST_USB_CTRL2, USB_CTRL2_POR_RST_MASK);
 }
-
-#else
-
-#include "RTE_Components.h"
-#include CMSIS_device_header
-
-#include "clk.h"
-#include "power.h"
-
-#if defined(TUSB_ALIF_DEBUG)
-#if (1 < TUSB_ALIF_DEBUG_DEPTH)
-#define LOG(...)      memset(logbuf[bi % TUSB_ALIF_DEBUG_DEPTH], ' ', 48);\
-                          snprintf(logbuf[(bi++) % TUSB_ALIF_DEBUG_DEPTH], 48, __VA_ARGS__);
-char logbuf[TUSB_ALIF_DEBUG_DEPTH][48];
-int bi = 0;
-#else
-#define LOG(...)      memset(logbuf, ' ', 48);\
-                          snprintf(logbuf, 48, __VA_ARGS__)
-char logbuf[48];
-#endif
-#else
-#define LOG(...)
 #endif
 
-static uint8_t _dcd_cmd_wait(uint8_t ep, uint8_t typ, uint16_t param);
 
-
-#endif
-
-static volatile uint32_t *_evnt_tail;
-static bool _ctrl_long_data = false;
-static bool _xfer_cfgd = false;
-static uint16_t _xfer_bytes[8];
-
-static uint32_t _sts_stage = 0;
-
-static uint32_t  _evnt_buf[1024] CFG_TUSB_MEM_SECTION __attribute__((aligned(4096))); // [TODO] runtime alloc
-
-static uint8_t  _ctrl_buf[64] CFG_TUSB_MEM_SECTION __attribute__((aligned(32))); // [TODO] runtime alloc
-static uint32_t _xfer_trb[8][4] CFG_TUSB_MEM_SECTION __attribute__((aligned(32))); // [TODO] runtime alloc
-
-/// Private Functions ----------------------------------------------------------
-
-static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t type);
-
-static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par);
-static void _dcd_handle_devt(uint8_t evt, uint16_t info);
-
-void dcd_uninit(void);
 
 /// Device Setup ---------------------------------------------------------------
 
@@ -237,26 +258,26 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
   sys_set_bits(DEVTEN_REG, DEVTEN_ULSTCNGEN);
 
   // Endpoint Configuration - Start config phase
-  (void) usb_dc_alif_send_ep_cmd(0, DEPCMD_DEPSTARTCFG, 0);
+  (void) usb_dc_alif_send_ep_cmd(0, CMDTYP_DEPSTARTCFG, 0);
 
   // Endpoint Configuration - EP0 OUT (ep = 0)
   uint8_t ep_idx = 0;
   XHC_REG_WR(DEPCMDPAR1N(ep_idx), (0 << 25) | (1 << 10) | (1 << 8));
   XHC_REG_WR(DEPCMDPAR0N(ep_idx), (0 << 22) | (0 << 17) | (ALIF_MAX_PCK_SIZE << 3) | (0 << 1));
-  (void) usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0);
+  (void) usb_dc_alif_send_ep_cmd(ep_idx, CMDTYP_DEPCFG, 0);
 
   // Endpoint Configuration - EP0 IN (ep = 1)
   ep_idx = 1;
   XHC_REG_WR(DEPCMDPAR1N(ep_idx), (1 << 25) | (1 << 10) | (1 << 8));
   XHC_REG_WR(DEPCMDPAR0N(ep_idx), (0 << 22) | (0 << 17) | (ALIF_MAX_PCK_SIZE << 3) | (0 << 1));
-  (void) usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0);
+  (void) usb_dc_alif_send_ep_cmd(ep_idx, CMDTYP_DEPCFG, 0);
 
   // set initial xfer configuration for CONTROL eps
   XHC_REG_WR(DEPCMDPAR0N(0), 1);
-  (void) usb_dc_alif_send_ep_cmd(0, DEPCMD_DEPXFERCFG, 0);
+  (void) usb_dc_alif_send_ep_cmd(0, CMDTYP_DEPXFERCFG, 0);
 
   XHC_REG_WR(DEPCMDPAR0N(1), 1);
-  (void) usb_dc_alif_send_ep_cmd(1, DEPCMD_DEPXFERCFG, 0);
+  (void) usb_dc_alif_send_ep_cmd(1, CMDTYP_DEPXFERCFG, 0);
 
   // prepare trb for the first setup packet
   uint8_t ep = 0;
@@ -270,7 +291,7 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
   // send trb to the usb dma
   XHC_REG_WR(DEPCMDPAR1N(ep), (uint32_t) local_to_global(_xfer_trb[ep]));
   XHC_REG_WR(DEPCMDPAR0N(ep), 0);
-  (void) usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPSTRTXFER, 0);
+  (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSTRTXFER, 0);
 
   sys_set_bits(DALEPENA_REG, (1 << ep));      // enable ep0 OUT
   sys_set_bits(DALEPENA_REG, (1 << (ep + 1)));// enable ep0 IN
@@ -583,7 +604,7 @@ bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
   if (false == _xfer_cfgd) {
     // Endpoint Configuration - Start config phase
-    (void) usb_dc_alif_send_ep_cmd(0, DEPCMD_DEPSTARTCFG, 2);// check here!! - usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPSTARTCFG, 2) ??
+    (void) usb_dc_alif_send_ep_cmd(0, CMDTYP_DEPSTARTCFG, 2);// check here!! - usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSTARTCFG, 2) ??
     _xfer_cfgd = true;
   }
 #else
@@ -602,10 +623,10 @@ bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
   XHC_REG_WR(DEPCMDPAR1N(ep_index), (ep_index << 25) | (interval << 16) | (1 << 10) | (1 << 8));
   XHC_REG_WR(DEPCMDPAR0N(ep_index), (0 << 30) | (0 << 22) | (fifo_num << 17) | ((desc_ep->wMaxPacketSize & 0x7FF) << 3) | (desc_ep->bmAttributes.xfer << 1));
-  (void) usb_dc_alif_send_ep_cmd(ep_index, DEPCMD_DEPCFG, 0);
+  (void) usb_dc_alif_send_ep_cmd(ep_index, CMDTYP_DEPCFG, 0);
 
   XHC_REG_WR(DEPCMDPAR0N(ep_index), 1);
-  (void) usb_dc_alif_send_ep_cmd(ep_index, DEPCMD_DEPXFERCFG, 0);
+  (void) usb_dc_alif_send_ep_cmd(ep_index, CMDTYP_DEPSTRTXFER, 0);
 
   sys_set_bits(DALEPENA_REG, (1 << ep_index));
 #else
@@ -1048,7 +1069,7 @@ static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t pa
           // prepare ep command
           XHC_REG_WR(DEPCMDPAR1N(ep_index), (uint32_t) local_to_global(_xfer_trb[ep_index]));
           XHC_REG_WR(DEPCMDPAR0N(ep_index), 0);
-          (void) usb_dc_alif_send_ep_cmd(ep_index, DEPCMD_DEPSTRTXFER, 0);
+          (void) usb_dc_alif_send_ep_cmd(ep_index, CMDTYP_DEPSTRTXFER, 0);
 
           *(volatile uint32_t *) 0x49007000 ^= 16;// [TEMP]
         }
@@ -1197,12 +1218,12 @@ static void _dcd_handle_devt(uint8_t evt, uint16_t info)
       uint8_t ep_idx = 0;
       XHC_REG_WR(DEPCMDPAR1N(ep_idx), (0 << 25) | (1 << 10) | (1 << 8));
       XHC_REG_WR(DEPCMDPAR0N(ep_idx), (2 << 30) | (0 << 22) | (0 << 17) | (64 << 3) | (0 << 1));
-      (void) usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0);
+      (void) usb_dc_alif_send_ep_cmd(ep_idx, CMDTYP_DEPCFG, 0);
 
       ep_idx = 1;
       XHC_REG_WR(DEPCMDPAR1N(ep_idx), (1 << 25) | (1 << 10) | (1 << 8));
       XHC_REG_WR(DEPCMDPAR0N(ep_idx), (2 << 30) | (0 << 22) | (0 << 17) | (64 << 3) | (0 << 1));
-      (void) usb_dc_alif_send_ep_cmd(ep_idx, DEPCMD_DEPCFG, 0);
+      (void) usb_dc_alif_send_ep_cmd(ep_idx, CMDTYP_DEPCFG, 0);
     } break;
     case DEVT_ULSTCHNG: {
       // LOG_ALIF_INFO("Link status change");
@@ -1324,7 +1345,7 @@ static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t typ
   /* Re-enable USB interrupt before issuing command */
   NVIC_EnableIRQ(USB_ALIF_IRQ);
 
-  (void) usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPSTRTXFER, 0);
+  (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSTRTXFER, 0);
 
   return 0;
 #else
