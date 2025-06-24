@@ -100,11 +100,13 @@ function(configure_freertos)
     add_compile_definitions(
       CORE_M55_HP
       M55_HP
+      CDC_STACK_SZIE=CDC_STACK_SIZE
       ) 
   else()
     add_compile_definitions(
       CORE_M55_HE
       M55_HE
+      CDC_STACK_SZIE=CDC_STACK_SIZE
       ) 
   endif()
 
