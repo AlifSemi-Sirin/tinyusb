@@ -121,8 +121,8 @@ static uint32_t _xfer_trb[8][4] CFG_TUSB_MEM_SECTION __attribute__((aligned(32))
 /// Private Functions ----------------------------------------------------------
 
 static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t type);
-static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par);
-static void _dcd_handle_devt(uint8_t evt, uint16_t info);
+static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par);
+static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info);
 
 void dcd_uninit(void);
 
@@ -462,9 +462,9 @@ void dcd_int_handler(uint8_t rhport)
 
       // dispatch the right handler for the event type
       if (0 == e.depevt.sig) { // DEPEVT
-          _dcd_handle_depevt(e.depevt.ep, e.depevt.evt, e.depevt.sts, e.depevt.par);
+          _dcd_handle_depevt(rhport, e.depevt.ep, e.depevt.evt, e.depevt.sts, e.depevt.par);
       } else if (1 == e.devt.sig) { // DEVT
-          _dcd_handle_devt(e.devt.evt, e.devt.info);
+          _dcd_handle_devt(rhport, e.devt.evt, e.devt.info);
       } else {
           // bad event??
           LOG("Unknown event %u", e.val);
@@ -578,7 +578,6 @@ void dcd_edpt0_status_complete(uint8_t rhport, tusb_control_request_t const * re
 {
     (void) rhport;
     (void) request;
-    LOG("%010u >%s", DWT->CYCCNT, __func__);
 
     _ctrl_long_data = false;
     _dcd_start_xfer(TUSB_DIR_OUT, _ctrl_buf, 8, TRBCTL_CTL_SETUP);
@@ -621,14 +620,14 @@ bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
   uint8_t interval = 0 < desc_ep->bInterval ? (desc_ep->bInterval - 1) : 0;
 
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
-  XHC_REG_WR(DEPCMDPAR1N(ep_index), (ep_index << 25) | (interval << 16) | (1 << 10) | (1 << 8));
-  XHC_REG_WR(DEPCMDPAR0N(ep_index), (0 << 30) | (0 << 22) | (fifo_num << 17) | ((desc_ep->wMaxPacketSize & 0x7FF) << 3) | (desc_ep->bmAttributes.xfer << 1));
-  (void) usb_dc_alif_send_ep_cmd(ep_index, CMDTYP_DEPCFG, 0);
+  XHC_REG_WR(DEPCMDPAR1N(ep), (ep << 25) | (interval << 16) | (1 << 10) | (1 << 8));
+  XHC_REG_WR(DEPCMDPAR0N(ep), (0 << 30) | (0 << 22) | (fifo_num << 17) | ((desc_ep->wMaxPacketSize & 0x7FF) << 3) | (desc_ep->bmAttributes.xfer << 1));
+  (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPCFG, 0);
 
-  XHC_REG_WR(DEPCMDPAR0N(ep_index), 1);
-  (void) usb_dc_alif_send_ep_cmd(ep_index, CMDTYP_DEPSTRTXFER, 0);
+  XHC_REG_WR(DEPCMDPAR0N(ep), 1);
+  (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSTRTXFER, 0);
 
-  sys_set_bits(DALEPENA_REG, (1 << ep_index));
+  sys_set_bits(DALEPENA_REG, (1 << ep));
 #else
   udev->depcmd[ep].par1 = (ep << 25) | (interval << 16) |
                           (1 << 10) | (1 << 8);
@@ -692,9 +691,9 @@ void dcd_edpt_close(uint8_t rhport, uint8_t ep_addr) {
 
   // 2) If a TRB is still owned by hardware (HWO bit set), abort it:
   if (_xfer_trb[ep_index][3] & (1U << 0)) {
-    // Temporarily allow DEPCMD_DEPENDXFER to take effect
+    // Temporarily allow CMDTYP_DEPENDXFER to take effect
     sys_set_bits(GUCTL2_REG, GUCTL2_RST_ACTBITLATER);
-    (void) usb_dc_alif_send_ep_cmd(ep_index, DEPCMD_DEPENDXFER, 0);
+    (void) usb_dc_alif_send_ep_cmd(ep_index, CMDTYP_DEPENDXFER, 0);
     sys_clear_bits(GUCTL2_REG, GUCTL2_RST_ACTBITLATER);
   }
 
@@ -705,6 +704,7 @@ void dcd_edpt_close(uint8_t rhport, uint8_t ep_addr) {
   LOG_ALIF_INFO("Endpoint %u %s closed",
                 (unsigned) (ep_index >> 1),
                 (ep_index & 1) ? "IN" : "OUT");
+}
 #else
 TU_ATTR_WEAK void dcd_edpt_close(uint8_t rhport, uint8_t ep_addr) {
     (void) rhport;
@@ -860,7 +860,7 @@ void dcd_edpt_stall(uint8_t rhport, uint8_t ep_addr)
 
   uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
-  (void) usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPSSTALL, 0);
+  (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSSTALL, 0);
 
   if (0 == tu_edpt_number(ep_addr)) {
     _ctrl_long_data = false;
@@ -885,7 +885,7 @@ void dcd_edpt_clear_stall(uint8_t rhport, uint8_t ep_addr)
   uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
 
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
-  (void) usb_dc_alif_send_ep_cmd(ep, DEPCMD_DEPCSTALL, 0);
+  (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPCSTALL, 0);
 #else
   _dcd_cmd_wait(ep, CMDTYP_DEPCSTALL, 0);
 #endif
@@ -904,13 +904,14 @@ void dcd_uninit(void)
 }
 
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
-static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t param) {
+static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t typ, uint16_t param) 
+{
   // Store PHY configuration
   uint32_t phycfg = XHC_REG_RD(GUSB2PHYCFG0_REG);
   sys_clear_bits(GUSB2PHYCFG0_REG, GUSB2PHYCFG0_ENBLSLPM | GUSB2PHYCFG0_SUSPENDUSB20);
 
   sys_clear_bits(DEPCMDN(ep), DEPCMD_CMDTYP_MASK);
-  sys_set_bits(DEPCMDN(ep), DEPCMD_CMDTYP(cmd_type));
+  sys_set_bits(DEPCMDN(ep), DEPCMD_CMDTYP(typ));
 
   sys_clear_bits(DEPCMDN(ep), DEPCMD_CMDIOC);
 
@@ -954,15 +955,15 @@ static uint8_t _dcd_cmd_wait(uint8_t ep, uint8_t typ, uint16_t param)
 /**
  * \brief Handle a DEPEVT (Device Endpoint Event) from the USB event ring.
  *
- * \param ep_index  Physical endpoint index (0 = EP0 OUT, 1 = EP0 IN, 2+ = other endpoints)
+ * \param ep        Physical endpoint index (0 = EP0 OUT, 1 = EP0 IN, 2+ = other endpoints)
  * \param evt       DEPEVT event type (XFERCOMPLETE, XFERINPROGRESS, XFERNOTREADY, etc.)
  * \param sts       DEPEVT status field (used for “Not Ready” codes or other flags)
  * \param par       DEPEVT parameter field (typically unused for IN/OUT transfers)
  */
-static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par)
+static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par)
 {
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
-  if (!(ep_index < TUP_DCD_ENDPOINT_MAX)) {
+  if (!(ep < TUP_DCD_ENDPOINT_MAX)) {
     TU_MESS_FAILED();
     TU_BREAKPOINT();
     return;
@@ -971,11 +972,11 @@ static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t pa
   switch (evt) {
     case DEPEVT_XFERCOMPLETE: {
       // Invalidate the TRB entry so we can safely read updated fields
-      sys_cache_data_invd_range(_xfer_trb[ep_index], sizeof(_xfer_trb[0]));
+      sys_cache_data_invd_range(_xfer_trb[ep], sizeof(_xfer_trb[0]));
       // Transfer completed: extract TRBCTL type from the TRB
-      uint8_t trbctl = (_xfer_trb[ep_index][3] >> 4) & 0x3F;
+      uint8_t trbctl = (_xfer_trb[ep][3] >> 4) & 0x3F;
 
-      if (ep_index == 0) {
+      if (ep == 0) {
         // EP0 OUT (SETUP or STATUS OUT)
         if (trbctl == TRBCTL_CTL_SETUP) {
           // SETUP stage finished: invalidate control buffer
@@ -1003,7 +1004,7 @@ static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t pa
           // invalid TRBCTL value
           __BKPT(0);
         }
-      } else if (ep_index == 1) {
+      } else if (ep == 1) {
         if (trbctl != TRBCTL_CTL_STAT2) {// STATUS IN notification is done at xfer request
           dcd_event_xfer_complete(rhport, tu_edpt_addr(0, TUSB_DIR_IN),
                                   _get_transfered_bytes(1),
@@ -1020,16 +1021,16 @@ static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t pa
         }
       } else {
         // [TODO] check if ep is open
-        if (TUSB_DIR_OUT == tu_edpt_dir(tu_edpt_addr(ep_index >> 1, ep_index & 1))) {
-          sys_cache_data_invd_range((void *) _xfer_trb[ep_index][0],
-                                    ALIF_MAX_PCK_SIZE - _xfer_trb[ep_index][2]);
+        if (TUSB_DIR_OUT == tu_edpt_dir(tu_edpt_addr(ep >> 1, ep & 1))) {
+          sys_cache_data_invd_range((void *) _xfer_trb[ep][0],
+                                    ALIF_MAX_PCK_SIZE - _xfer_trb[ep][2]);
           //   _xfer_bytes[ep] - _xfer_trb[ep][2]);
-          dcd_event_xfer_complete(rhport, tu_edpt_addr(ep_index >> 1, ep_index & 1),
-                                  ALIF_MAX_PCK_SIZE - _xfer_trb[ep_index][2],
+          dcd_event_xfer_complete(rhport, tu_edpt_addr(ep >> 1, ep & 1),
+                                  ALIF_MAX_PCK_SIZE - _xfer_trb[ep][2],
                                   XFER_RESULT_SUCCESS, true);
         } else {
-          dcd_event_xfer_complete(rhport, tu_edpt_addr(ep_index >> 1, ep_index & 1),
-                                  _get_transfered_bytes(ep_index),
+          dcd_event_xfer_complete(rhport, tu_edpt_addr(ep >> 1, ep & 1),
+                                  _get_transfered_bytes(ep),
                                   XFER_RESULT_SUCCESS, true);
         }
       }
@@ -1043,33 +1044,33 @@ static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t pa
       // Transfer-not-ready indicates endpoint needs re-arming
 
       // LOG_ALIF_INFO("Transfer not ready: %s", sts & 8 ? "no TRB" : "no XFER");
-      if ((1 == ep_index) && (DEPEVT_STS_NOTREADY_CODE == (sts & DEPEVT_STS_NOTREADY_MASK))) {
+      if ((1 == ep) && (DEPEVT_STS_NOTREADY_CODE == (sts & DEPEVT_STS_NOTREADY_MASK))) {
         _dcd_start_xfer(1, NULL, 0, TRBCTL_CTL_STAT2);
         break;
       }
 
-      if ((0 == ep_index) && (DEPEVT_STS_NOTREADY_CODE == (sts & DEPEVT_STS_NOTREADY_MASK))) {
+      if ((0 == ep) && (DEPEVT_STS_NOTREADY_CODE == (sts & DEPEVT_STS_NOTREADY_MASK))) {
         _xfer_bytes[0] = 0;
         _dcd_start_xfer(0, _ctrl_buf, 64, TRBCTL_CTL_STAT3);
         break;
       }
 
-      if ((1 > ep_index) && (sts & (1 << 3))) {
-        if (_xfer_trb[ep_index][3] & (1 << 0)) {// transfer was configured
+      if ((1 > ep) && (sts & (1 << 3))) {
+        if (_xfer_trb[ep][3] & (1 << 0)) {// transfer was configured
           // dependxfer can only block when actbitlater is set
           sys_set_bits(GUCTL2_REG, GUCTL2_RST_ACTBITLATER);
-          (void) usb_dc_alif_send_ep_cmd(ep_index, DEPCMD_DEPENDXFER, 0);
+          (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPENDXFER, 0);
           sys_clear_bits(GUCTL2_REG, GUCTL2_RST_ACTBITLATER);
 
           // reset the trb byte count and clean the cache
-          sys_cache_data_invd_range(_xfer_trb[ep_index], sizeof(_xfer_trb[0]));
-          _xfer_trb[ep_index][2] = _xfer_bytes[ep_index];
-          sys_cache_data_flush_range(_xfer_trb[ep_index], sizeof(_xfer_trb[0]));// zephyr equ for RTSS_CleanDCache_by_Addr(..)
+          sys_cache_data_invd_range(_xfer_trb[ep], sizeof(_xfer_trb[0]));
+          _xfer_trb[ep][2] = _xfer_bytes[ep];
+          sys_cache_data_flush_range(_xfer_trb[ep], sizeof(_xfer_trb[0]));// zephyr equ for RTSS_CleanDCache_by_Addr(..)
 
           // prepare ep command
-          XHC_REG_WR(DEPCMDPAR1N(ep_index), (uint32_t) local_to_global(_xfer_trb[ep_index]));
-          XHC_REG_WR(DEPCMDPAR0N(ep_index), 0);
-          (void) usb_dc_alif_send_ep_cmd(ep_index, CMDTYP_DEPSTRTXFER, 0);
+          XHC_REG_WR(DEPCMDPAR1N(ep), (uint32_t) local_to_global(_xfer_trb[ep]));
+          XHC_REG_WR(DEPCMDPAR0N(ep), 0);
+          (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSTRTXFER, 0);
 
           *(volatile uint32_t *) 0x49007000 ^= 16;// [TEMP]
         }
@@ -1196,7 +1197,7 @@ static void _dcd_handle_depevt(uint8_t ep, uint8_t evt, uint8_t sts, uint16_t pa
 #endif
 }
 
-static void _dcd_handle_devt(uint8_t evt, uint16_t info)
+static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info)
 {
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
   switch (evt) {
