@@ -72,11 +72,6 @@ __aligned(32) CFG_TUSB_MEM_SECTION
 
 static uint16_t _xfer_bytes[TUP_DCD_ENDPOINT_MAX];
 
-static volatile uint32_t *_evnt_tail;
-static bool _ctrl_long_data = false;
-static bool _xfer_cfgd = false;
-static uint32_t _sts_stage = 0;
-
 
 /// API Extension --------------------------------------------------------------
 static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t param);
@@ -108,8 +103,6 @@ static uint8_t _dcd_cmd_wait(uint8_t ep, uint8_t typ, uint16_t param);
 
 static uint16_t _xfer_bytes[8];
 
-static uint32_t _sts_stage = 0;
-
 static uint32_t  _evnt_buf[1024] CFG_TUSB_MEM_SECTION __attribute__((aligned(4096))); // [TODO] runtime alloc
 
 static uint8_t  _ctrl_buf[64] CFG_TUSB_MEM_SECTION __attribute__((aligned(32))); // [TODO] runtime alloc
@@ -117,6 +110,10 @@ static uint32_t _xfer_trb[8][4] CFG_TUSB_MEM_SECTION __attribute__((aligned(32))
 
 #endif
 
+static volatile uint32_t *_evnt_tail;
+static bool _ctrl_long_data = false;
+static bool _xfer_cfgd = false;
+static uint32_t _sts_stage = 0;
 
 /// Private Functions ----------------------------------------------------------
 

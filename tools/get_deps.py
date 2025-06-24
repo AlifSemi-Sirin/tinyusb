@@ -22,8 +22,14 @@ deps_mandatory = {
 # Optional Dependencies per MCU
 # path, url, commit, family (Alphabet sorted by path)
 deps_optional = {
-    'hw/mcu/alif': ['https://github.com/alifsemi/alif_ensemble-cmsis-dfp.git',
+    'hw/mcu/alif/ensemble-cmsis-dfp': ['https://github.com/alifsemi/alif_ensemble-cmsis-dfp.git',
                          '450314044646ad4b56c588b52b68eb6fe7d7caa7',
+                         'alif_e7_dk'],
+    'hw/mcu/alif/boardlib': ['https://github.com/alifsemi/alif_boardlib.git',
+                         '880e9503de907b54c8a10c838940b8bc67c9af08',
+                         'alif_e7_dk'],
+    'hw/mcu/alif/common-app-utils': ['https://github.com/alifsemi/alif_common-app-utils.git',
+                         '4444c94e5475b641e493fd46075908425ba52a70',
                          'alif_e7_dk'],
     'hw/mcu/allwinner': ['https://github.com/hathach/allwinner_driver.git',
                          '8e5e89e8e132c0fd90e72d5422e5d3d68232b756',

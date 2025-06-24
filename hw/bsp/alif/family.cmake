@@ -1,4 +1,6 @@
-set(ALIF_CMSIS ${TOP}/hw/mcu/alif)
+set(ALIF_CMSIS_DFP ${TOP}/hw/mcu/alif/ensemble-cmsis-dfp)
+set(ALIF_BOARDLIB ${TOP}/hw/mcu/alif/boardlib)
+set(ALIF_COMMON_APP_UTILS ${TOP}/hw/mcu/alif/common-app-utils)
 set(CMSIS_DIR ${TOP}/lib/CMSIS_6)
 
 # include board specific, for zephyr BOARD_ALIAS may be used instead
@@ -22,39 +24,45 @@ function(add_board_target BOARD_TARGET)
     return()
   endif ()
 
-  set(LD_FILE_GNU ${ALIF_CMSIS}/Device/E7/AE722F80F55D5XX/linker_script/GCC/gcc_${MCU_VARIANT}.ld)
+  set(LD_FILE_GNU ${ALIF_CMSIS_DFP}/Device/E7/AE722F80F55D5XX/linker_script/GCC/gcc_${MCU_VARIANT}.ld)
   message(STATUS "Setting linker file: ${LD_FILE_GNU}")
 
   if (NOT DEFINED STARTUP_FILE_${CMAKE_C_COMPILER_ID})
-    set(STARTUP_FILE_GNU ${ALIF_CMSIS}/Device/core/${MCU_VARIANT}/source/startup_${MCU_VARIANT}.c)
+    set(STARTUP_FILE_GNU ${ALIF_CMSIS_DFP}/Device/core/${MCU_VARIANT}/source/startup_${MCU_VARIANT}.c)
     set(STARTUP_FILE_Clang ${STARTUP_FILE_GNU})
     message(STATUS "Setting startup file: ${STARTUP_FILE_GNU}")
   endif ()
 
   add_library(${BOARD_TARGET} STATIC
-    ${ALIF_CMSIS}/Device/common/source/system_utils.c
-    ${ALIF_CMSIS}/Device/common/source/system_M55.c
-    ${ALIF_CMSIS}/Device/common/source/clk.c
-    ${ALIF_CMSIS}/Device/common/source/mpu_M55.c
-    ${ALIF_CMSIS}/Device/common/source/tcm_partition.c
-    ${ALIF_CMSIS}/Device/common/source/tgu_M55.c
-    ${ALIF_CMSIS}/Alif_CMSIS/Source/Driver_GPIO.c
-    ${ALIF_CMSIS}/drivers/source/pinconf.c
-    ${ALIF_CMSIS}/Alif_CMSIS/Source/Driver_USART.c
-    ${ALIF_CMSIS}/drivers/source/uart.c
+    ${ALIF_CMSIS_DFP}/Device/common/source/system_utils.c
+    ${ALIF_CMSIS_DFP}/Device/common/source/system_M55.c
+    ${ALIF_CMSIS_DFP}/Device/common/source/clk.c
+    ${ALIF_CMSIS_DFP}/Device/common/source/mpu_M55.c
+    ${ALIF_CMSIS_DFP}/Device/common/source/tcm_partition.c
+    ${ALIF_CMSIS_DFP}/Device/common/source/tgu_M55.c
+    ${ALIF_CMSIS_DFP}/Alif_CMSIS/Source/Driver_GPIO.c
+    ${ALIF_CMSIS_DFP}/drivers/source/pinconf.c
+    ${ALIF_CMSIS_DFP}/Alif_CMSIS/Source/Driver_USART.c
+    ${ALIF_CMSIS_DFP}/drivers/source/uart.c
+    ${ALIF_BOARDLIB}/devkit_e1c/board_init.c
+    ${ALIF_BOARDLIB}/devkit_gen2/board_init.c
+    ${ALIF_BOARDLIB}/appkit_gen2/board_init.c
+    ${ALIF_COMMON_APP_UTILS}/logging/uart_tracelib.c
     ${STARTUP_FILE_${CMAKE_C_COMPILER_ID}}
     )
 
   target_include_directories(${BOARD_TARGET} PUBLIC
-    ${ALIF_CMSIS}/Alif_CMSIS/Include
-    ${ALIF_CMSIS}/drivers/include
-    ${ALIF_CMSIS}/Device/common/config
-    ${ALIF_CMSIS}/Device/common/include
-    ${ALIF_CMSIS}/Device/E7/AE722F80F55D5XX
-    ${ALIF_CMSIS}/Device/core/${MCU_VARIANT}
-    ${ALIF_CMSIS}/Device/core/${MCU_VARIANT}/include
-    ${ALIF_CMSIS}/Device/core/${MCU_VARIANT}/config
-    ${ALIF_CMSIS}/drivers/include
+    ${ALIF_CMSIS_DFP}/Alif_CMSIS/Include
+    ${ALIF_CMSIS_DFP}/drivers/include
+    ${ALIF_CMSIS_DFP}/Device/common/config
+    ${ALIF_CMSIS_DFP}/Device/common/include
+    ${ALIF_CMSIS_DFP}/Device/E7/AE722F80F55D5XX
+    ${ALIF_CMSIS_DFP}/Device/core/${MCU_VARIANT}
+    ${ALIF_CMSIS_DFP}/Device/core/${MCU_VARIANT}/include
+    ${ALIF_CMSIS_DFP}/Device/core/${MCU_VARIANT}/config
+    ${ALIF_CMSIS_DFP}/drivers/include
+    ${ALIF_BOARDLIB}
+    ${ALIF_COMMON_APP_UTILS}/logging
     ${CMSIS_DIR}/CMSIS/Core/Include
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD}
     )
@@ -120,15 +128,15 @@ function(configure_freertos)
   # There is not such problem with latest FreeRTOSKernel but 10.5.1 is not working
   # without setting FREERTOS_CONFIG_FILE_DIRECTORY.
   include_directories(
-    ${ALIF_CMSIS}/Alif_CMSIS/Include
-    ${ALIF_CMSIS}/drivers/include
-    ${ALIF_CMSIS}/Device/common/config
-    ${ALIF_CMSIS}/Device/common/include
-    ${ALIF_CMSIS}/Device/E7/AE722F80F55D5XX
-    ${ALIF_CMSIS}/Device/core/${MCU_VARIANT}
-    ${ALIF_CMSIS}/Device/core/${MCU_VARIANT}/include
-    ${ALIF_CMSIS}/Device/core/${MCU_VARIANT}/config
-    ${ALIF_CMSIS}/drivers/include
+    ${ALIF_CMSIS_DFP}/Alif_CMSIS/Include
+    ${ALIF_CMSIS_DFP}/drivers/include
+    ${ALIF_CMSIS_DFP}/Device/common/config
+    ${ALIF_CMSIS_DFP}/Device/common/include
+    ${ALIF_CMSIS_DFP}/Device/E7/AE722F80F55D5XX
+    ${ALIF_CMSIS_DFP}/Device/core/${MCU_VARIANT}
+    ${ALIF_CMSIS_DFP}/Device/core/${MCU_VARIANT}/include
+    ${ALIF_CMSIS_DFP}/Device/core/${MCU_VARIANT}/config
+    ${ALIF_CMSIS_DFP}/drivers/include
     ${CMSIS_DIR}/CMSIS/Core/Include
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD}
     )

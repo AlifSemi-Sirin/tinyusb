@@ -1,12 +1,15 @@
 #include "bsp/board_api.h"
 #include "board.h"
- 
+#include <stdbool.h>
+
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
-  #include "RTE_Components.h"
-  #include CMSIS_device_header
+#include "RTE_Components.h"
+#include CMSIS_device_header
+#include "Driver_GPIO.h"
+#include "uart_tracelib.h"
+#endif
 
-#elif CFG_TUSB_OS == OPT_OS_ZEPHYR
-
+#if CFG_TUSB_OS == OPT_OS_ZEPHYR
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/entropy.h>
 #include <zephyr/drivers/gpio.h>
@@ -15,8 +18,6 @@
 
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
-#else 
-  #error NOT Implemented!
 #endif
 
 /**
@@ -24,17 +25,23 @@ static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios)
  */
 void board_init(void) {
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
-  // TODO: API implementation
-#elif CFG_TUSB_OS == OPT_OS_ZEPHYR
-  if (device_is_ready(led.port)) {
-    gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
-  }
-  if (device_is_ready(button.port)) {
-    gpio_pin_configure_dt(&button, GPIO_INPUT);
-  }
-#else 
-  #error NOT Implemented!
-#endif  
+      BOARD_Pinmux_Init();
+    BOARD_BUTTON2_Init(NULL);
+
+    // 1ms tick timer
+    SysTick_Config(SystemCoreClock / 1000);
+    
+    tracelib_init(NULL, NULL);
+#endif
+
+#if CFG_TUSB_OS == OPT_OS_ZEPHYR
+    if (device_is_ready(led.port)) {
+      gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
+    }
+    if (device_is_ready(button.port)) {
+      gpio_pin_configure_dt(&button, GPIO_INPUT);
+    }
+#endif
 }
 
 /**
@@ -42,14 +49,14 @@ void board_init(void) {
  */
 void board_led_write(bool state) {
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
-  // TODO: implement API
-  (void) state;
-#elif CFG_TUSB_OS == OPT_OS_ZEPHYR
-  if (device_is_ready(led.port)) {
-    gpio_pin_set(led.port, led.pin, state ? 1 : 0);
-  }
-#else 
-  #error NOT Implemented!
+    BOARD_LED1_Control(state ?
+        BOARD_LED_STATE_HIGH :
+        BOARD_LED_STATE_LOW);
+#endif
+#if CFG_TUSB_OS == OPT_OS_ZEPHYR
+    if (device_is_ready(led.port)) {
+        gpio_pin_set(led.port, led.pin, state ? 1 : 0);
+    }
 #endif  
 }
 
@@ -58,33 +65,18 @@ void board_led_write(bool state) {
  */
 uint32_t board_button_read(void) {
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
-  // TODO: implement API
-  return 1; 
-#elif CFG_TUSB_OS == OPT_OS_ZEPHYR
-  if (!device_is_ready(button.port)) {
-    return 0;
-  }
-  int val = gpio_pin_get(button.port, button.pin);
+    BOARD_BUTTON_STATE btn_state;
+    // Get new button state (active low)
+    BOARD_BUTTON2_GetState(&btn_state);
+    return BOARD_BUTTON_STATE_LOW == btn_state;
+#endif
+#if CFG_TUSB_OS == OPT_OS_ZEPHYR
+    if (!device_is_ready(button.port)) {
+        return 0;
+    }
+    int val = gpio_pin_get(button.port, button.pin);
 
-  return (button.dt_flags & GPIO_ACTIVE_LOW) ? (val == 0) : (val != 0);
-#else 
-  #error NOT Implemented!
-#endif  
-}
-
-/**
- * @brief Unique ID of the board
- */
-size_t board_get_unique_id(uint8_t id[], size_t max_len) {
-#if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
-  // TODO: implement API
-  (void) max_len;
-  (void) id;
-  return 0;
-#elif CFG_TUSB_OS == OPT_OS_ZEPHYR
-  // TODO: implement API
-#else 
-  #error NOT Implemented!
+    return (button.dt_flags & GPIO_ACTIVE_LOW) ? (val == 0) : (val != 0);
 #endif  
 }
 
@@ -92,82 +84,97 @@ size_t board_get_unique_id(uint8_t id[], size_t max_len) {
  * @brief UART read handler
  */
 int board_uart_read(uint8_t* buf, int len) {
-#if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
-  // TODO: implement API
-  (void) buf;
-  (void) len;
-  return 0;
-#elif CFG_TUSB_OS == OPT_OS_ZEPHYR
-  // TODO: implement API
-#else 
-  #error NOT Implemented!
-#endif  
+    // NOTE: stdin functionality has not been implemented
+    (void) buf, (void) len;
+    return 0;
 }
 
 int board_uart_write(void const* buf, int len) {
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
-  // TODO: implement API
-  (void) buf;
-  (void) len;
-  return 1;
-#elif CFG_TUSB_OS == OPT_OS_ZEPHYR
-  // TODO: implement API
-#else 
-  #error NOT Implemented!
+    int ret = send_str((const char *) buf, len);
+    return (ret == ARM_DRIVER_OK) ? len : 0;
+#endif
+
+#if CFG_TUSB_OS == OPT_OS_ZEPHYR
+    // TODO: implement API
+    (void) buf, (void) len;
+    return 0;
 #endif  
 }
 
-/**
- * @brief Returns the current time in milliseconds since boot
- */
+#if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
+
+struct stat;
+int _fstat(int f, struct stat *buf);
+int _isatty(int fh);
+int _getpid(void);
+int _kill(int pid, int sig);
+
+// Stubs to suppress missing stdio definitions
+int _close(int fh) {
+    (void) fh;
+    return -1;
+}
+
+int _lseek(int fh, long pos, int whence) {
+    (void) fh, (void) pos, (void) whence;
+    return -1;
+}
+
+struct stat;
+int _fstat(int f, struct stat *buf) {
+    (void) f, (void) buf;
+    return -1;
+}
+
+int _isatty(int fh) {
+    (void) fh;
+    return 0;
+}
+
+int _getpid(void) {
+    return 1;
+}
+
+int _kill(int pid, int sig) {
+    (void) sig;
+
+    if (pid == 1) {
+        __BKPT(0);
+        while(1) {
+            __WFE();
+        }
+    }
+
+    return -1;
+}
+
+#endif
+
 #if CFG_TUSB_OS == OPT_OS_NONE
-
-void SysTick_Handler(void);
-
 volatile uint32_t system_ticks = 0;
 
 void SysTick_Handler(void) {
   system_ticks++;
 }
 
+/**
+ * @brief Returns the current time in milliseconds since boot
+ */
 uint32_t board_millis(void) {
   return system_ticks;
 }
 #endif
 
+
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
-
-void USB_IRQHandler(void);
-
-void USB_IRQHandler(void)
-{
+void USB_IRQHandler(void) {
     dcd_int_handler(0);
 }
-
-int _close(int val);
-int _lseek(int val0, int val1, int val2);
-
-int _close(int val) {
-    (void) val;
-    __BKPT(0); 
-    return 0;
-}
-int _lseek(int val0, int val1, int val2) {
-    (void) val0;
-    (void) val1;
-    (void) val2;
-    __BKPT(0); 
-    return 0;
-}
-
 #endif
 
-
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR
-
-void USBD_IRQHandler(void)
-{
-  tud_int_handler(0);
+void USBD_IRQHandler(void) {
+    tud_int_handler(0);
 }
-
 #endif
