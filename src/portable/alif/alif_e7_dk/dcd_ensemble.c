@@ -622,7 +622,7 @@ bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
   (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPCFG, 0);
 
   XHC_REG_WR(DEPCMDPAR0N(ep), 1);
-  (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSTRTXFER, 0);
+  (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPXFERCFG, 0);
 
   sys_set_bits(DALEPENA_REG, (1 << ep));
 #else
