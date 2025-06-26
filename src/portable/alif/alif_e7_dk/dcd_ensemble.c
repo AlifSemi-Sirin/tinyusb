@@ -830,9 +830,10 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t t
               total_bytes = 512; // temporary hack, controller requires max
                                   // size requests on OUT endpoints [FIXME]
           }
-          uint8_t ret = _dcd_start_xfer(ep, buffer, total_bytes,
+          //uint8_t ret = 
+          _dcd_start_xfer(ep, buffer, total_bytes,
                           total_bytes ? TRBCTL_NORMAL : TRBCTL_NORMAL_ZLP);
-          LOG("start xfer sts %u", ret);
+          //LOG("start xfer sts %u", ret);
       }
   }
 
@@ -959,6 +960,7 @@ static uint8_t _dcd_cmd_wait(uint8_t ep, uint8_t typ, uint16_t param)
  */
 static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par)
 {
+  (void) par;
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
   if (!(ep < TUP_DCD_ENDPOINT_MAX)) {
     TU_MESS_FAILED();
@@ -1079,7 +1081,7 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
     } break;
   }
 #else
-  (void) par;
+  (void) rhport;
   LOG("%010u DEPEVT ep%u evt%u sts%u par%u", DWT->CYCCNT, ep, evt, sts, par);
 
   switch (evt) {
@@ -1254,6 +1256,7 @@ static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info)
     }
   }
 #else
+  (void) rhport;
   LOG("%010u DEVT evt%u info%u", DWT->CYCCNT, evt, info);
   switch (evt) {
       case DEVT_USBRST: {

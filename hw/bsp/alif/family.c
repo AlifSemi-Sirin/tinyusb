@@ -76,9 +76,13 @@ uint32_t board_button_read(void) {
     }
     int val = gpio_pin_get(button.port, button.pin);
 
-    return (button.dt_flags & GPIO_ACTIVE_LOW) ? (val == 0) : (val != 0);
+    // TODO: Check Zephyr API
+    //return (button.dt_flags & GPIO_ACTIVE_LOW) ? (val == 0) : (val != 0);
+    return (val == 0);
 #endif  
 }
+
+#if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
 
 /**
  * @brief UART read handler
@@ -89,28 +93,23 @@ int board_uart_read(uint8_t* buf, int len) {
     return 0;
 }
 
+/**
+ * @brief UART write handler
+ */
 int board_uart_write(void const* buf, int len) {
-#if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
     int ret = send_str((const char *) buf, len);
     return (ret == ARM_DRIVER_OK) ? len : 0;
-#endif
-
-#if CFG_TUSB_OS == OPT_OS_ZEPHYR
-    // TODO: implement API
-    (void) buf, (void) len;
-    return 0;
-#endif  
 }
 
-#if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
-
+// Stubs to suppress missing stdio definitions
+int _close(int fh);
+int _lseek(int fh, long pos, int whence);
 struct stat;
 int _fstat(int f, struct stat *buf);
 int _isatty(int fh);
 int _getpid(void);
 int _kill(int pid, int sig);
 
-// Stubs to suppress missing stdio definitions
 int _close(int fh) {
     (void) fh;
     return -1;
@@ -154,6 +153,7 @@ int _kill(int pid, int sig) {
 #if CFG_TUSB_OS == OPT_OS_NONE
 volatile uint32_t system_ticks = 0;
 
+void SysTick_Handler(void);
 void SysTick_Handler(void) {
   system_ticks++;
 }
@@ -168,6 +168,7 @@ uint32_t board_millis(void) {
 
 
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
+void USB_IRQHandler(void);
 void USB_IRQHandler(void) {
     dcd_int_handler(0);
 }
