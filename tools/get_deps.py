@@ -22,6 +22,15 @@ deps_mandatory = {
 # Optional Dependencies per MCU
 # path, url, commit, family (Alphabet sorted by path)
 deps_optional = {
+    'hw/mcu/alif/ensemble-cmsis-dfp': ['https://github.com/alifsemi/alif_ensemble-cmsis-dfp.git',
+                         '450314044646ad4b56c588b52b68eb6fe7d7caa7',
+                         'alif_e7_dk'],
+    'hw/mcu/alif/boardlib': ['https://github.com/alifsemi/alif_boardlib.git',
+                         '880e9503de907b54c8a10c838940b8bc67c9af08',
+                         'alif_e7_dk'],
+    'hw/mcu/alif/common-app-utils': ['https://github.com/alifsemi/alif_common-app-utils.git',
+                         '4444c94e5475b641e493fd46075908425ba52a70',
+                         'alif_e7_dk'],
     'hw/mcu/allwinner': ['https://github.com/hathach/allwinner_driver.git',
                          '8e5e89e8e132c0fd90e72d5422e5d3d68232b756',
                          'fc100s'],
@@ -209,11 +218,15 @@ deps_optional = {
                     'tm4c '],
     'lib/CMSIS_6': ['https://github.com/ARM-software/CMSIS_6.git',
                     'b0bbb0423b278ca632cfe1474eb227961d835fd2',
-                    'ra'],
+                    'ra alif_e7_dk'],
     'lib/sct_neopixel': ['https://github.com/gsteiert/sct_neopixel.git',
                          'e73e04ca63495672d955f9268e003cffe168fcd8',
                          'lpc55'],
 }
+
+# Alif workaround as currently the latest FreeRTOS is not supported
+if 'alif' in sys.argv:
+    deps_mandatory['lib/FreeRTOS-Kernel'][1] = 'def7d2df2b0506d3d249334974f51e427c17a41c'
 
 # combined 2 deps
 deps_all = {**deps_mandatory, **deps_optional}
