@@ -258,6 +258,7 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
   }
 }
 
+uint32_t btn;
 void hid_task(void *p1, void *p2, void *p3)
 {
   (void) p1;
@@ -269,20 +270,20 @@ void hid_task(void *p1, void *p2, void *p3)
     // Poll every 10ms
     k_msleep(10);
 
-    uint32_t const btn = board_button_read();
+    btn = board_button_read();
 
     // Remote wakeup
-    if ( tud_suspended() && btn )
-    {
-      // Wake up host if we are in suspend mode
-      // and REMOTE_WAKEUP feature is enabled by host
-      tud_remote_wakeup();
-    }
-    else
-    {
-      // Send the 1st of report chain, the rest will be sent by tud_hid_report_complete_cb()
-      send_hid_report(REPORT_ID_KEYBOARD, btn);
-    }
+    // if ( tud_suspended() && btn )
+    // {
+    //   // Wake up host if we are in suspend mode
+    //   // and REMOTE_WAKEUP feature is enabled by host
+    //   tud_remote_wakeup();
+    // }
+    // else
+    // {
+    //   // Send the 1st of report chain, the rest will be sent by tud_hid_report_complete_cb()
+    //   send_hid_report(REPORT_ID_KEYBOARD, btn);
+    // }
   }
 }
 
@@ -357,6 +358,6 @@ void led_blinky_cb(struct k_timer *timer)
   (void) timer;
   static bool led_state = false;
 
-  board_led_write(led_state);
+  // board_led_write(btn == 0);
   led_state = 1 - led_state; // toggle
 }

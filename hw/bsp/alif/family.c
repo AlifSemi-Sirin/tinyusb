@@ -17,7 +17,11 @@
 #include <zephyr/sys/printk.h>
 
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
-static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
+static const struct gpio_dt_spec btn0 = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
+static const struct gpio_dt_spec btn1 = GPIO_DT_SPEC_GET(DT_ALIAS(sw1), gpios);
+static const struct gpio_dt_spec btn2 = GPIO_DT_SPEC_GET(DT_ALIAS(sw2), gpios);
+static const struct gpio_dt_spec btn3 = GPIO_DT_SPEC_GET(DT_ALIAS(sw3), gpios);
+static const struct gpio_dt_spec btn4 = GPIO_DT_SPEC_GET(DT_ALIAS(sw4), gpios);
 #endif
 
 /**
@@ -38,8 +42,15 @@ void board_init(void) {
     if (device_is_ready(led.port)) {
       gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
     }
-    if (device_is_ready(button.port)) {
-      gpio_pin_configure_dt(&button, GPIO_INPUT);
+    
+    gpio_pin_configure_dt(&btn4, GPIO_INPUT | GPIO_PULL_UP);
+
+      if (device_is_ready(btn0.port)) {
+    //   gpio_pin_configure_dt(&btn0, GPIO_INPUT);
+    //   gpio_pin_configure_dt(&btn1, GPIO_INPUT);
+    //   gpio_pin_configure_dt(&btn2, GPIO_INPUT);
+    //   gpio_pin_configure_dt(&btn3, GPIO_INPUT);
+    //   gpio_pin_configure_dt(&btn4, GPIO_OUTPUT_INACTIVE);
     }
 #endif
 }
@@ -71,12 +82,19 @@ uint32_t board_button_read(void) {
     return BOARD_BUTTON_STATE_LOW == btn_state;
 #endif
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR
-    if (!device_is_ready(button.port)) {
-        return 0;
-    }
-    int val = gpio_pin_get(button.port, button.pin);
+    // if (!device_is_ready(btn0.port)) {
+    //     return 0;
+    // }
+    static uint8_t cnt = 0;
+    gpio_pin_set(led.port, led.pin, cnt & 1);
+    gpio_pin_set(btn4.port, btn4.pin, 1);
+    cnt++;
+    // int val = gpio_pin_get(btn4.port, btn4.pin);
 
-    return (button.dt_flags & GPIO_ACTIVE_LOW) ? (val == 0) : (val != 0);
+
+    // return (button.dt_flags & GPIO_ACTIVE_LOW) ? (val == 0) : (val != 0);
+    // return val == 0;
+    return 0;
 #endif  
 }
 
