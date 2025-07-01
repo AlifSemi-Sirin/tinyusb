@@ -13,6 +13,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/entropy.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/pinctrl.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
@@ -40,6 +41,15 @@ void board_init(void) {
     }
     if (device_is_ready(button.port)) {
       gpio_pin_configure_dt(&button, GPIO_INPUT);
+
+      // FIXME: pull-up resistor is not configured by default for pin
+		pinctrl_soc_pin_t pin_cfg = 0;
+		pin_cfg |= PAD_CONF_REN(1);
+		pin_cfg |= PAD_CONF_DSC(1);
+		pin_cfg |= (120) << 3;		// port ID [9:3] (120 - LPGPIO)
+		pin_cfg |= (button.pin  & 0x07) << 0;		// pin number [2:0]
+
+        pinctrl_configure_pins(&pin_cfg, 1, NULL);
     }
 #endif
 }
