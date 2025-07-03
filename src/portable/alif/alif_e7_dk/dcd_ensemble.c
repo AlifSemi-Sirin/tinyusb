@@ -459,7 +459,7 @@ void dcd_int_handler(uint8_t rhport)
 
       // dispatch the right handler for the event type
       if (0 == e.depevt.sig) { // DEPEVT
-          _dcd_handle_depevt(rhport, e.depevt.ep, e.depevt.evt, e.depevt.sts, e.depevt.par);
+          _dcd_handle_depevt(rhport, e.depevt.ep, e.depevt.evt, e.depevt.sts);
       } else if (1 == e.devt.sig) { // DEVT
           _dcd_handle_devt(rhport, e.devt.evt, e.devt.info);
       } else {
@@ -957,7 +957,7 @@ static uint8_t _dcd_cmd_wait(uint8_t ep, uint8_t typ, uint16_t param)
  * \param sts       DEPEVT status field (used for “Not Ready” codes or other flags)
  * \param par       DEPEVT parameter field (typically unused for IN/OUT transfers)
  */
-static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par)
+static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t sts)
 {
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
   if (!(ep < TUP_DCD_ENDPOINT_MAX)) {
