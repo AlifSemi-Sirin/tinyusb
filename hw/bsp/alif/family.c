@@ -44,8 +44,8 @@ void board_init(void) {
 
       // FIXME: pull-up resistor is not configured by default for pin
 		pinctrl_soc_pin_t pin_cfg = 0;
-		pin_cfg |= PAD_CONF_REN(1);
-		pin_cfg |= PAD_CONF_DSC(1);
+		pin_cfg |= PAD_CONF_REN(1); // receiver enable
+		pin_cfg |= PAD_CONF_DSC(button.dt_flags & GPIO_PULL_UP ? 1 : 0); // pull-up resistor enable
 		pin_cfg |= (120) << 3;		// port ID [9:3] (120 - LPGPIO)
 		pin_cfg |= (button.pin  & 0x07) << 0;		// pin number [2:0]
 
@@ -86,7 +86,7 @@ uint32_t board_button_read(void) {
     }
     int val = gpio_pin_get(button.port, button.pin);
 
-    return val == 0;
+    return val != 0;    // Pin inverted by setting GPIO_ACTIVE_LOW
 #endif  
 }
 
