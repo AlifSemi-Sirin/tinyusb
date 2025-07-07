@@ -117,8 +117,8 @@ static uint32_t _sts_stage = 0;
 
 /// Private Functions ----------------------------------------------------------
 
-static uint8_t _dcd_start_xfer(uint8_t ep, void *buf, uint32_t size, uint8_t type);
-static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t sts);
+static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t type);
+static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par);
 static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info);
 
 void dcd_uninit(void);
@@ -161,11 +161,11 @@ static inline void disable_usb_phy_isolation(void) {
   sys_clear_bits(VBAT_PWR_CTRL, PWR_CTRL_UPHY_ISO);
 }
 
-static inline void usb_ctrl2_phy_power_on_reset_set(void) {
+static inline void usb_ctrl2_phy_power_on_reset_set() {
   sys_set_bits(EXPMST_USB_CTRL2, USB_CTRL2_POR_RST_MASK);
 }
 
-static inline void usb_ctrl2_phy_power_on_reset_clear(void) {
+static inline void usb_ctrl2_phy_power_on_reset_clear() {
   sys_clear_bits(EXPMST_USB_CTRL2, USB_CTRL2_POR_RST_MASK);
 }
 #endif
@@ -423,7 +423,7 @@ void dcd_int_handler(uint8_t rhport)
 
     // dispatch the right handler for the event type
     if (e.depevt.is_devt == 0) {// DEPEVT
-      _dcd_handle_depevt(rhport, e.depevt.ep, e.depevt.evt, e.depevt.sts);
+      _dcd_handle_depevt(rhport, e.depevt.ep, e.depevt.evt, e.depevt.sts, e.depevt.par);
     } else {// DEVT
       _dcd_handle_devt(rhport, e.devt.evt, e.devt.info);
     }
@@ -459,7 +459,7 @@ void dcd_int_handler(uint8_t rhport)
 
       // dispatch the right handler for the event type
       if (0 == e.depevt.sig) { // DEPEVT
-          _dcd_handle_depevt(rhport, e.depevt.ep, e.depevt.evt, e.depevt.sts);
+          _dcd_handle_depevt(rhport, e.depevt.ep, e.depevt.evt, e.depevt.sts, e.depevt.par);
       } else if (1 == e.devt.sig) { // DEVT
           _dcd_handle_devt(rhport, e.devt.evt, e.devt.info);
       } else {
@@ -957,7 +957,7 @@ static uint8_t _dcd_cmd_wait(uint8_t ep, uint8_t typ, uint16_t param)
  * \param sts       DEPEVT status field (used for “Not Ready” codes or other flags)
  * \param par       DEPEVT parameter field (typically unused for IN/OUT transfers)
  */
-static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t sts)
+static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par)
 {
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
   if (!(ep < TUP_DCD_ENDPOINT_MAX)) {
