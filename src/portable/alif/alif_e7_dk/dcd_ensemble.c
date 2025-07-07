@@ -962,12 +962,6 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
 {
   (void) par;
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
-  if (!(ep < TUP_DCD_ENDPOINT_MAX)) {
-    TU_MESS_FAILED();
-    TU_BREAKPOINT();
-    return;
-  }
-
   switch (evt) {
     case DEPEVT_XFERCOMPLETE: {
       // Invalidate the TRB entry so we can safely read updated fields
