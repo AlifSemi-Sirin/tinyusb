@@ -68,9 +68,9 @@ __aligned(32) CFG_TUSB_MEM_SECTION
     static uint8_t _ctrl_buf[CTRL_BUF_SIZE];// [TODO] runtime alloc
 
 __aligned(32) CFG_TUSB_MEM_SECTION
-    static uint32_t _xfer_trb[TUP_DCD_ENDPOINT_MAX][4];// [TODO] runtime alloc
+    static uint32_t _xfer_trb[8][4];// [TODO] runtime alloc
 
-static uint16_t _xfer_bytes[TUP_DCD_ENDPOINT_MAX];
+static uint16_t _xfer_bytes[8];
 
 
 /// API Extension --------------------------------------------------------------
