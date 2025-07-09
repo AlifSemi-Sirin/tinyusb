@@ -590,9 +590,7 @@ void dcd_edpt0_status_complete(uint8_t rhport, tusb_control_request_t const * re
 bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
 {
   (void) rhport;
-
-  if (TUSB_XFER_ISOCHRONOUS == desc_ep->bmAttributes.xfer)
-      return false;
+  uint32_t cfg0, cfg1;
 
   uint8_t ep = (tu_edpt_number(desc_ep->bEndpointAddress) << 1) |
                 tu_edpt_dir(desc_ep->bEndpointAddress);
@@ -612,25 +610,45 @@ bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
   }
 #endif
 
-  uint8_t fifo_num = TUSB_DIR_IN == tu_edpt_dir(desc_ep->bEndpointAddress) ?
+    uint8_t fifo_num = TUSB_DIR_IN == tu_edpt_dir(desc_ep->bEndpointAddress) ?
                       tu_edpt_number(desc_ep->bEndpointAddress) : 0;
-  uint8_t interval = 0 < desc_ep->bInterval ? (desc_ep->bInterval - 1) : 0;
+    uint8_t interval = 0 < desc_ep->bInterval ? (desc_ep->bInterval - 1) : 0;
 
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR 
-  XHC_REG_WR(DEPCMDPAR1N(ep), (ep << 25) | (interval << 16) | (1 << 10) | (1 << 8));
-  XHC_REG_WR(DEPCMDPAR0N(ep), (0 << 30) | (0 << 22) | (fifo_num << 17) | ((desc_ep->wMaxPacketSize & 0x7FF) << 3) | (desc_ep->bmAttributes.xfer << 1));
-  (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPCFG, 0);
+    cfg1 =  (ep << 25)          // USB Endpoint Number
+            | (interval << 16)  // Bit 16-23: bInterval
+            | (1U << 10)        // Bit 10: XferNotReady Enable (XferNRdyEn)
+            | (1U << 8);        // Bit 8: XferComplete Enable (XferCmplEn)
+    
+    if ( TUSB_XFER_ISOCHRONOUS == desc_ep->bmAttributes.xfer ) {
+        cfg1 |= (1U << 31);     // FIFO-based. Set to 1 if this isochronous endpoint
+    }
+    
+    cfg0 =  (0 << 30)           // Config Action
+            | (0 << 22)         // Burst Size (BrstSiz)
+            | (fifo_num << 17)  // FIFO Number (FIFONum) ?? for isochronous ep?
+            | ((desc_ep->wMaxPacketSize & 0x7FF) << 3)
+            | (desc_ep->bmAttributes.xfer << 1);
 
-  XHC_REG_WR(DEPCMDPAR0N(ep), 1);
-  (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPXFERCFG, 0);
+    XHC_REG_WR(DEPCMDPAR1N(ep), cfg1);
+    XHC_REG_WR(DEPCMDPAR0N(ep), cfg0);
+    (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPCFG, 0);
 
-  sys_set_bits(DALEPENA_REG, (1 << ep));
+    XHC_REG_WR(DEPCMDPAR0N(ep), 1);
+    (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPXFERCFG, 0);
+
+    sys_set_bits(DALEPENA_REG, 1U << ep);
+
 #else
-  udev->depcmd[ep].par1 = (ep << 25) | (interval << 16) |
-                          (1 << 10) | (1 << 8);
-  udev->depcmd[ep].par0 = (0 << 30) | (0 << 22) | (fifo_num << 17) |
-                          ((desc_ep->wMaxPacketSize & 0x7FF) << 3) |
-                          (desc_ep->bmAttributes.xfer << 1);
+    if ( TUSB_XFER_ISOCHRONOUS == desc_ep->bmAttributes.xfer ) {
+        return false; // [TODO] implement ISOCHRONOUS support
+    }
+
+    udev->depcmd[ep].par1 = (ep << 25) | (interval << 16) |
+                            (1 << 10) | (1 << 8);
+    udev->depcmd[ep].par0 = (0 << 30) | (0 << 22) | (fifo_num << 17) |
+                            ((desc_ep->wMaxPacketSize & 0x7FF) << 3) |
+                            (desc_ep->bmAttributes.xfer << 1);
 
   _dcd_cmd_wait(ep, CMDTYP_DEPCFG, 0);
   udev->depcmd[ep].par0 = 1;
@@ -777,10 +795,18 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t t
       }
 
       // start transfer: NORMAL for data, NORMAL_ZLP for zero-length
+      uint8_t type = (total_bytes > 0) ? TRBCTL_NORMAL : TRBCTL_NORMAL_ZLP;
+
+      // if EP in the isochronous mode and first transfer, use type = TRBCTL_ISO_FIRST
+    //   if (TUSB_XFER_ISOCHRONOUS == tu_edpt_xfer_type(ep_addr) &&
+    //       _xfer_bytes[ep] == 0) {
+    //     type = TRBCTL_ISO_FIRST;
+    //   } 
+      
       (void) _dcd_start_xfer(ep,
                              buffer,
                              total_bytes,
-                             total_bytes ? TRBCTL_NORMAL : TRBCTL_NORMAL_ZLP);
+                             type);
     }
   }
 #else
@@ -1040,18 +1066,19 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
     case DEPEVT_XFERNOTREADY: {
       // Transfer-not-ready indicates endpoint needs re-arming
 
-      // LOG_ALIF_INFO("Transfer not ready: %s", sts & 8 ? "no TRB" : "no XFER");
-      if ((1 == ep) && (DEPEVT_STS_NOTREADY_CODE == (sts & DEPEVT_STS_NOTREADY_MASK))) {
-        _dcd_start_xfer(1, NULL, 0, TRBCTL_CTL_STAT2);
-        break;
-      }
-
+      // EP0 OUT and IN are special cases
       if ((0 == ep) && (DEPEVT_STS_NOTREADY_CODE == (sts & DEPEVT_STS_NOTREADY_MASK))) {
-        _xfer_bytes[0] = 0;
-        _dcd_start_xfer(0, _ctrl_buf, 64, TRBCTL_CTL_STAT3);
+        _xfer_bytes[ep] = 0;
+        _dcd_start_xfer(ep, _ctrl_buf, 64, TRBCTL_CTL_STAT3);
         break;
       }
 
+      if ((1 == ep) && (DEPEVT_STS_NOTREADY_CODE == (sts & DEPEVT_STS_NOTREADY_MASK))) {
+        _dcd_start_xfer(ep, NULL, 0, TRBCTL_CTL_STAT2);
+        break;
+      }
+
+      // For other endpoints, we need to re-arm the transfer
       if ((1 > ep) && (sts & (1 << 3))) {
         if (_xfer_trb[ep][3] & (1 << 0)) {// transfer was configured
           // dependxfer can only block when actbitlater is set
@@ -1069,7 +1096,8 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
           XHC_REG_WR(DEPCMDPAR0N(ep), 0);
           (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSTRTXFER, 0);
 
-          *(volatile uint32_t *) 0x49007000 ^= 16;// [TEMP]
+          // GPIO7 toggle for debug
+        //   *(volatile uint32_t *) 0x49007000 ^= 16;// [TEMP]
         }
       }
     } break;
@@ -1324,14 +1352,17 @@ static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t typ
   NVIC_DisableIRQ(USB_ALIF_IRQ);
 
   /* Populate the TRB fields */
-  _xfer_trb[ep][0] = buf ? (uint32_t) local_to_global(buf) : 0U;
-  _xfer_trb[ep][1] = 0U;                     // reserved
-  _xfer_trb[ep][2] = size;                   // transfer length
+  _xfer_trb[ep][0] = buf ? (uint32_t) local_to_global(buf) : 0U; // Buffer Pointer Low (BPTRL)
+  _xfer_trb[ep][1] = 0U;                                         // Buffer Pointer High (BPTRH)
+  _xfer_trb[ep][2] = (0U << 28)     // TRB Status (TRBSTS)
+                    | (0U << 26)    // Short Packet Received (SPR)/Reserved
+                    | (0U << 24)    // Packet Count M1 (PCM1)
+                    | (size << 0);  // Buffer Size (BUFSIZ)
   _xfer_trb[ep][3] = (1U << 11)              // Interrupt on Complete
-                     | (1U << 10)            // Interrupt on Short Packet / Interrupt on MissedIsoc (ISP/IMI)
-                     | ((uint32_t) type << 4)// Indicates the type of TRB
-                     | (1U << 1)             // ISP (Immediate Start)
-                     | (1U << 0);            // Hardware Owner of Descriptor (HWO)
+                    | (1U << 10)            // Interrupt on Short Packet / Interrupt on MissedIsoc (ISP/IMI)
+                    | ((uint32_t) type << 4)// Indicates the type of TRB
+                    | (1U << 1)             // Last TRB (LST)
+                    | (1U << 0);            // Hardware Owner of Descriptor (HWO)
 
   /* Clean D-cache so USB controller sees updated TRB */
   sys_cache_data_flush_range(_xfer_trb[ep], sizeof(_xfer_trb[0]));// zephyr equ for RTSS_CleanDCache_by_Addr(..)
