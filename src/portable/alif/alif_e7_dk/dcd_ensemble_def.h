@@ -7,54 +7,26 @@
 #include <soc_common.h>
 #include <soc_memory_map.h>    
 
-/* PWR_CTRL Register @ Offset 0x08 */
-#define PWR_CTRL_UPHY_ISO          BIT(17) /* USB PHY Isolation Enable [17] */
-#define PWR_CTRL_UPHY_PWR_MASK     BIT(16) /* USB PHY Power Mask [16] */
-#define PWR_CTRL_VPH_1P8_BYP_VAL   BIT(13) /* USB PHY VPH 1.8V Bypass Value [13] */
-#define PWR_CTRL_VPH_1P8_BYP_EN    BIT(12) /* USB PHY VPH 1.8V Bypass Enable [12] */
-#define PWR_CTRL_DPHY_PLL_ISO      BIT(9)  /* MIPI PLL Isolation Enable [9] */
-#define PWR_CTRL_DPHY_PLL_PWR_MASK BIT(8)  /* MIPI PLL Power Mask [8] */
-#define PWR_CTRL_RX_DPHY_ISO       BIT(5)  /* RX MIPI DPHY Isolation Enable [5] */
-#define PWR_CTRL_RX_DPHY_PWR_MASK  BIT(4)  /* RX MIPI DPHY Power Mask [4] */
-#define PWR_CTRL_TX_DPHY_ISO       BIT(1)  /* TX MIPI DPHY Isolation Enable [1] */
-#define PWR_CTRL_TX_DPHY_PWR_MASK  BIT(0)  /* TX MIPI DPHY Power Mask [0] */
+// Enable USB_CLK and 10M_CLK (CLK_ENA Register)
+#define CLK_ENA_CLK20M              BIT(22)
 
-/* CLK_ENA Register Bit Definitions */
-#define CLK_ENA_SYSPLL      BIT(0)  /* Enable SYSPLL_CLK */
-#define CLK_ENA_CPUPLL      BIT(4)  /* Enable CPUPLL_CLK */
-#define CLK_ENA_ES0         BIT(12) /* Enable RTSS_HP_CLK */
-#define CLK_ENA_ES1         BIT(13) /* Enable RTSS_HE_CLK */
-#define CLK_ENA_HFXO        BIT(18) /* Enable clock to the HFXO_OUT pin */
-#define CLK_ENA_CLK160M     BIT(20) /* Enable 160M_CLK */
-#define CLK_ENA_CLK100M     BIT(21) /* Enable 100M_CLK */
-#define CLK_ENA_CLK20M      BIT(22) /* Enable USB_CLK and 10M_CLK */
-#define CLK_ENA_CLK38P4M    BIT(23) /* Enable HFOSC_CLK */
-#define CLK_ENA_CVM         BIT(24) /* Enable SRAM0 clock */
-#define CLK_ENA_OCVM        BIT(28) /* Enable SRAM1 clock */
+// Enable clock for USB (PERIPH_CLK_ENA Register)
+#define PERIPH_CLK_ENA_USB_CKEN     BIT(20) 
 
-/* Peripheral Clock Enable Register Bit Definitions */
-#define PERIPH_CLK_ENA_CPI_CKEN     BIT(0)  /* Enable clock for CPI */
-#define PERIPH_CLK_ENA_DPI_CKEN     BIT(1)  /* Enable clock for DPI controller (CDC) */
-#define PERIPH_CLK_ENA_DMA_CKEN     BIT(4)  /* Enable clock for DMA0 */
-#define PERIPH_CLK_ENA_GPU_CKEN     BIT(8)  /* Enable clock for GPU2D */
-#define PERIPH_CLK_ENA_ETH_CKEN     BIT(12) /* Enable clock for ETH */
-#define PERIPH_CLK_ENA_SDC_CKEN     BIT(16) /* Enable clock for SDMMC */
-#define PERIPH_CLK_ENA_USB_CKEN     BIT(20) /* Enable clock for USB */
-#define PERIPH_CLK_ENA_CSI_CKEN     BIT(24) /* Enable clock for CSI */
-#define PERIPH_CLK_ENA_DSI_CKEN     BIT(28) /* Enable clock for DSI */
+// USB PHY Power Control (PWR_CTRL Register)
+#define PWR_CTRL_UPHY_ISO           BIT(17) // USB PHY Isolation Enable
+#define PWR_CTRL_UPHY_PWR_MASK      BIT(16) // USB PHY Power Mask
 
-/* USB_CTRL2 Register @ Offset 0xAC (CLKCTL_PER_MST 0x4903_F000) */
-#define USB_CTRL2_POR_RST_MASK BIT(8)      /* POR_RST_MASK: USB PHY PoR Reset Mask (bit 8) */
-// #define USB_CTRL2_PME_EN       BIT(6)      /* PME_EN: Power Management Enable (bit 6) */
-// #define USB_CTRL2_FLADJ_MASK   (0x3F << 0) /* FLADJ_30MHZ_REG: Frequency Adjust Val (bits [5:0]) */
-// #define USB_CTRL2_FLADJ_SET(x) (((x) & 0x3F) << 0)
+// USB PHY PoR Reset Mask (USB_CTRL2 Register)
+#define USB_CTRL2_POR_RST_MASK      BIT(8)
 
+// USB Interrupt Number Definition
 #define USB_NODE DT_NODELABEL(usb0)
 #define USB_IRQ_IRQn DT_IRQN(USB_NODE)
 
 #endif
 
-// Alif USB ID definitions
+// Alif USB ID definitions (Global Id Register)
 #define GSNPSID_HIGH            0x55330000  // Core Identification Number
 #define GSNPSID_LOW             0x0000330B  // Release number 3.30b
 
@@ -62,56 +34,67 @@
 #define GUSB2PHYCFG0_USBTRDTIM_16BIT    0x5 // MAC interface is 16-bit UTMI+
 #define GUSB2PHYCFG0_USBTRDTIM_8BIT     0x9 // MAC interface is 8-bit UTMI+/ULPI
 
-// Alif USB device speed settings
-#define DCFG_DEVSPD_HIGH_SPEED  0x00        // High-speed 480MBit/s
-#define DCFG_DEVSPD_FULL_SPEED  0x01        // Full-speed 12MBit/s
+// DCFG USB device speed settings
+#define DCFG_DEVSPD_HS          0x00        // High-speed 480MBit/s
+#define DCFG_DEVSPD_FS          0x01        // Full-speed 12MBit/s
 
-// Base address of USB device controller 
-#define USB_BASE                0x48200000UL
+// DSTS USB device speed
+#define DSTS_CONNECTSPD_HS      0x0         // High-speed
+#define DSTS_CONNECTSPD_FS      0x1         // Full-speed
+
+// Physical endpoints
+enum {
+    PHY_EP0 = 0,                    // USB Control EP0 OUT
+    PHY_EP1 = 1,                    // USB Control EP0 IN
+    PHY_EP_MAX = 7
+} PHY_EP;
 
 // USB Registers Access Types
 #define _rw volatile uint32_t
 #define __w volatile uint32_t
 #define __r volatile const uint32_t
 
+// USB Device Controller Base Address  
+#define USB_BASE                0x48200000UL
+
 // USB GBL Registers
 volatile struct {
     union {
-        _rw gsbuscfg0;              // Global SoC Bus Configuration Register 0 0xC100
-        struct {
-            _rw incrbrstena    : 1; // Undefined length INCR burst type enable
-            _rw incr4brstena   : 1; // INCR4 burst type enable
-            _rw incr8brstena   : 1; // INCR8 burst type enable
-            _rw incr16brstena  : 1; // INCR16 burst type enable
-            _rw incr32brstena  : 1; // INCR32 burst type enable
-            _rw incr64brstena  : 1; // INCR64 burst type enable
-            _rw incr128brstena : 1; // INCR128 burst type enable
-            _rw incr256brstena : 1; // INCR256 burst type enable
-            __r : 2;                // Reserved
-            _rw desbigend      : 1; // Descriptor access is big endian
-            _rw datbigend      : 1; // Data access is big endian
-            __r : 4;                // Reserved
-            _rw deswrreqinfo   : 4; // Descriptor write request info
-            _rw datwrreqinfo   : 4; // Data write request info 
-            _rw desrdreqinfo   : 4; // Descriptor read request info
-            _rw datrdreqinfo   : 4; // Data read request info
+        _rw gsbuscfg0;                  // Global SoC Bus Configuration Register 0
+        struct {                        
+            _rw incrbrstena    : 1;     // Undefined length INCR burst type enable
+            _rw incr4brstena   : 1;     // INCR4 burst type enable
+            _rw incr8brstena   : 1;     // INCR8 burst type enable
+            _rw incr16brstena  : 1;     // INCR16 burst type enable
+            _rw incr32brstena  : 1;     // INCR32 burst type enable
+            _rw incr64brstena  : 1;     // INCR64 burst type enable
+            _rw incr128brstena : 1;     // INCR128 burst type enable
+            _rw incr256brstena : 1;     // INCR256 burst type enable
+            __r : 2;                    // Reserved
+            _rw desbigend      : 1;     // Descriptor access is big endian
+            _rw datbigend      : 1;     // Data access is big endian
+            __r : 4;                    // Reserved
+            _rw deswrreqinfo   : 4;     // Descriptor write request info
+            _rw datwrreqinfo   : 4;     // Data write request info 
+            _rw desrdreqinfo   : 4;     // Descriptor read request info
+            _rw datrdreqinfo   : 4;     // Data read request info
         } gsbuscfg0_b;
     };
 
     union {
-        _rw gsbuscfg1;
+        _rw gsbuscfg1;                  // Global SoC Bus Configuration Register 1
         struct {
-            __r : 8;
-            _rw pipetranslimit : 4;
-            _rw en1kpage       : 1;
-            __r : 19;
+            __r : 8;                    // Reserved
+            _rw pipetranslimit : 4;     // AXI pipelined transfers burst request limit
+            _rw en1kpage       : 1;     // 1 KB page boundary
+            __r : 19;                   // Reserved
         } gsbuscfg1_b;
     };
 
     __r : 32; __r : 32;
 
     union {
-        _rw gctl;   // Global Core Control Register 0xC110
+        _rw gctl;                       // Global Core Control Register
         struct {
             _rw dsblclkgtng      : 1;   // Disable clock gating
             __r gblhibernationen : 1;   // Hibernation enable status at the global level
@@ -133,63 +116,63 @@ volatile struct {
     __r : 32;
 
     union {
-        _rw gsts;
+        _rw gsts;                       // Global Status Register
         struct {
-            __r curmod        : 2;
-            __r : 2;
-            _rw buserraddrvld : 1;
-            _rw csrtimeout    : 1;
-            __r device_ip     : 1;
-            __r host_ip       : 1;
-            __r adp_ip        : 1;
-            __r bc_ip         : 1;
-            __r otg_ip        : 1;
-            __r ssic_ip       : 1;
-            __r : 8;
-            __r cbelt         : 12;
+            __r curmod        : 2;      // Current operation mode (Device/Host)
+            __r : 2;                    // Reserved
+            _rw buserraddrvld : 1;      // Bus error address valid
+            _rw csrtimeout    : 1;      // CSR timeout
+            __r device_ip     : 1;      // Device interrupt pending
+            __r host_ip       : 1;      // Host interrupt pending
+            __r adp_ip        : 1;      // Not used
+            __r bc_ip         : 1;      // Not used
+            __r otg_ip        : 1;      // Not used
+            __r ssic_ip       : 1;      // Not used
+            __r : 8;                    // Reserved
+            __r cbelt         : 12;     // Current BELT value
         } gsts_b;
     };
 
     union {
-        _rw guctl1;
+        _rw guctl1;                             // Global User Control Register 1
         struct {
-            _rw loa_filter_en             : 1;
-            _rw ovrld_l1_susp_com         : 1;
-            _rw hc_parchk_disable         : 1;
-            _rw hc_errata_enable          : 1;
-            _rw l1_susp_thrld_for_host    : 4;
-            _rw l1_susp_thrld_en_for_host : 1;
-            _rw dev_hs_nyet_bulk_spr      : 1;
-            _rw resume_opmode_hs_host     : 1;
-            __r : 1;
-            _rw disusb2refclkgtng         : 1;
-            __r : 2;
-            _rw parkmode_disable_fsls     : 1;
-            _rw parkmode_disable_hs       : 1;
-            __r : 1;
-            _rw nak_per_enh_hs            : 1;
-            _rw nak_per_enh_fs            : 1;
-            _rw dev_lsp_tail_lock_dis     : 1;
-            _rw ip_gap_add_on             : 2;
-            _rw dev_l1_exit_by_hw         : 1;
-            __r : 2;
-            _rw dev_trb_out_spr_ind       : 1;
-            _rw tx_ipgap_linecheck_dis    : 1;
-            _rw filter_se0_fsls_eop       : 1;
-            __r : 1;
-            _rw dev_decouple_l1l2_evt     : 1;
+            _rw loa_filter_en             : 1;  // LOA filter enable
+            _rw ovrld_l1_susp_com         : 1;  // Overload UTMI_L1_SUSPEND_COM
+            _rw hc_parchk_disable         : 1;  // Host parameter check disable
+            _rw hc_errata_enable          : 1;  // Host Exit Latency Delta enable
+            _rw l1_susp_thrld_for_host    : 4;  // L1 suspend threshold in Host mode
+            _rw l1_susp_thrld_en_for_host : 1;  // L1 suspend threshold enable in Host mode
+            _rw dev_hs_nyet_bulk_spr      : 1;  // HS bulk OUT short packet gets NYET in Device mode
+            _rw resume_opmode_hs_host     : 1;  // Opmode in HS resume in Host mode
+            __r : 1;                            // Reserved
+            _rw disusb2refclkgtng         : 1;  // Disable REF_CLK gating for 2.0 PHY
+            __r : 2;                            // Reserved
+            _rw parkmode_disable_fsls     : 1;  // Disable park mode of FS/LS bus instances
+            _rw parkmode_disable_hs       : 1;  // Disable park mode of HS bus instances
+            __r : 1;                            // Reserved
+            _rw nak_per_enh_hs            : 1;  // Performance enchancement for HS in NAK
+            _rw nak_per_enh_fs            : 1;  // Performance enchancement for FS in NAK
+            _rw dev_lsp_tail_lock_dis     : 1;  // Disable device LSP lock logic for tail TRB
+            _rw ip_gap_add_on             : 2;  // Inter packet gap add on
+            _rw dev_l1_exit_by_hw         : 1;  // Device in L1 hardware exit
+            __r : 2;                            // Reserved
+            _rw dev_trb_out_spr_ind       : 1;  // OUT in TRB status short packet indication
+            _rw tx_ipgap_linecheck_dis    : 1;  // Disable TX IPGAP LineState check
+            _rw filter_se0_fsls_eop       : 1;  // Filter SE0 detection in FS/LS or EOP
+            __r : 1;                            // Reserved
+            _rw dev_decouple_l1l2_evt     : 1;  // Device decoupled L1/L2 event
         } guctl1_b;
     };
 
     union {
-        _rw gsnpsid;    // Global ID Register 0xC120
+        _rw gsnpsid;                    // Global ID Register
     };
 
     __r : 32;
 
     union {
-        _rw guid;       // Global User ID Register 0xC128
-        struct {        // Reset value is 0x12345678
+        _rw guid;                       // Global User ID Register
+        struct {                        // Reset value is 0x12345678
             _rw userid : 32;
         } guid_b;
     };
@@ -201,22 +184,22 @@ volatile struct {
     };
 
     union {
-        _rw gbuserraddrlo;
+        _rw gbuserraddrlo;              // Global SoC Bus Error Address Register (LOW)
         struct {
-            _rw buserraddr : 32;
+            _rw buserraddr : 32;        // Bus address (LOW)
         } gbuserraddrlo_b;
     };
 
     union {
-        _rw gbuserraddrhi;
+        _rw gbuserraddrhi;              // Global SoC Bus Error Address Register (HIGH)
         struct {
-            _rw buserraddr : 32;
+            _rw buserraddr : 32;        // Bus address (HIGH)
         } gbuserraddrhi_b;
     };
 
     __r : 32; __r : 32;
 
-    __r ghwparams[8];
+    __r ghwparams[8];                   // Global HW Parameters Registers [0-7]
 
     __r : 32; __r : 32; __r : 32; __r : 32;
     __r : 32; __r : 32; __r : 32; __r : 32;
@@ -226,9 +209,9 @@ volatile struct {
     // base + 0x9C here
 
     union {
-        _rw guctl2;
+        _rw guctl2;                     // Global User Control Register 2
         struct {
-            __r : 11;
+            __r : 11;                   // TODO:
             _rw disablecfc         : 1;
             _rw enableepcacheevict : 1;
             __r : 1;
@@ -249,7 +232,7 @@ volatile struct {
     // base + 0x100 here
 
     union {
-        _rw gusb2phycfg0;   // Global USB2 PHY Configuration Register 0xC200
+        _rw gusb2phycfg0;                       // Global USB2 PHY Configuration Register
         struct {
             _rw toutcal                  : 3;   // HS/FS timeout calibration
             _rw phyif                    : 1;   // PHY interface (8 or 16 bit)
@@ -292,10 +275,10 @@ volatile struct {
     // base + 0x200 here
 
     union {
-        _rw gtxfifosiz[4];      // Global Transmit FIFO Size Register 0xC300+(n*0x4)
+        _rw gtxfifosiz[4];              // Global Transmit FIFO Size Registers [0-3]
         struct {
-            _rw txfdep : 16;    // TxFIFO Depth (0xa on reset)
-            _rw txfstaddr : 16; // TxFIFO RAM start address (0x271 on reset)
+            _rw txfdep : 16;            // TxFIFO Depth (0xa on reset)
+            _rw txfstaddr : 16;         // TxFIFO RAM start address (0x271 on reset)
         } gtxfifosiz_b[4];
     };
 
@@ -310,10 +293,10 @@ volatile struct {
     // base + 0x280 here
 
     union {
-        _rw grxfifosiz[4];      // Global Receive FIFO Size Register 0xC380+(n*0x4)
+        _rw grxfifosiz[4];              // Global Receive FIFO Size Registers [0-3]
         struct {
-            _rw rxfdep : 16;    // RxFIFO depth (0x105 on reset)
-            _rw rxfstaddr : 16; // RxFIFO RAM start address (0x271)
+            _rw rxfdep : 16;            // RxFIFO depth (0x105 on reset)
+            _rw rxfstaddr : 16;         // RxFIFO RAM start address (0x271)
         } grxfifosiz_b[4];
     };
 
@@ -328,34 +311,34 @@ volatile struct {
     // base + 0x300 here
 
     union {
-        _rw gevntadrlo0;        // Global Event Buffer Address (Low) Register 0xC400
+        _rw gevntadrlo0;                // Global Event Buffer Address (Low) Register
         struct {
-            _rw evntadrlo : 32; // Event buffer address (Low)
+            _rw evntadrlo : 32;         // Event buffer address (Low)
         } gevntadrlo0_b;
     };
 
     union {
-        _rw gevntadrhi0;        // Global Event Buffer Address (High) Register 0xC404
+        _rw gevntadrhi0;                // Global Event Buffer Address (High) Register
         struct {
-            _rw evntadrhi : 32; // Event buffer address (High)
+            _rw evntadrhi : 32;         // Event buffer address (High)
         } gevntadrhi0_b;
     };
 
     union {
-        _rw gevntsiz0;
-        struct {
-            _rw eventsiz : 16;
-            __r : 15;
-            _rw evntintrptmask : 1;
+        _rw gevntsiz0;                  // Global Event Buffer Size Register
+        struct {        
+            _rw eventsiz : 16;          // Event buffer size in bytes
+            __r : 15;                   // Reserved
+            _rw evntintrptmask : 1;     // Event interrupt mask
         } gevntsiz0_b;
     };
 
     union {
-        _rw gevntcount0;
+        _rw gevntcount0;                // Global Event Buffer Count Register
         struct {
-            _rw evntcount : 16;
+            _rw evntcount : 16;         // Event count
             __r : 15;
-            _rw evnt_handler_busy : 1;
+            _rw evnt_handler_busy : 1;  // Event handler busy
         } gevntcount0_b;
     };
 
@@ -393,7 +376,7 @@ volatile struct {
 
     // base + 0x500 here
 
-    __r ghwparams8;
+    __r ghwparams8;                 // Global HW Parameters Register 8
 
     __r : 32; __r : 32; __r : 32;
 
@@ -459,7 +442,7 @@ volatile struct {
 
 volatile struct {
     union {
-        _rw dcfg;                       // Device Configuration Register 0xC700
+        _rw dcfg;                       // Device Configuration Register
         struct {
             _rw devspd : 3;             // Device Speed
             _rw devaddr : 7;            // Device Address
@@ -473,7 +456,7 @@ volatile struct {
     };
 
     union {
-        _rw dctl;                       // Device Control register 0xC704
+        _rw dctl;                       // Device Control register
         struct {
             __r : 1;                    // Reserved
             _rw tstctl : 4;             // Test Control
@@ -492,7 +475,7 @@ volatile struct {
     };
 
     union {
-        _rw devten;                     // Device Event Enable Register 0xC708
+        _rw devten;                     // Device Event Enable Register
         struct {
             _rw dissconnevten : 1;      // Disconnect Detected Event Enable
             _rw usbrstevten : 1;        // USB Reset Enable
@@ -514,40 +497,40 @@ volatile struct {
         } devten_b;
     };
 
-    union {
+    union {                             // Device Status Register
         _rw dsts;
         struct {
-            __r connectspd : 3;
-            __r soffn : 14;
-            __r rxfifoempty : 1;
-            __r usblnkst : 4;
-            __r devctrlhlt : 1;
-            __r coreidle : 1;
-            __r sss : 1;
-            __r rss : 1;
+            __r connectspd : 3;         // Connection Speed
+            __r soffn : 14;             // Frame/Microframe Number of the Received SOF
+            __r rxfifoempty : 1;        // RxFIFO Empty
+            __r usblnkst : 4;           // USB/Link State
+            __r devctrlhlt : 1;         // Device Controller Halted
+            __r coreidle : 1;           // Core Idle
+            __r sss : 1;                // SSS Save State Status
+            __r rss : 1;                // RSS Restore State Status
             __r : 2;
-            _rw sre : 1;
-            __r dcnrd : 1;
+            _rw sre : 1;                // Save Restore Error
+            __r dcnrd : 1;              // Device Controller Not Ready (not used)
             __r : 2;
         } dsts_b;
     };
 
-    union {
+    union {                             // Device Generic Command Register
         _rw dgcmdpar;
         struct {
             _rw parameter : 32;
         } dgcmdpar_b;
     };
 
-    union {
+    union {                             // Device Generic Comand Register
         _rw dgcmd;
         struct {
-            _rw cmdtyp : 8;
-            _rw cmdioc : 1;
+            _rw cmdtyp : 8;             // Generic Command Type
+            _rw cmdioc : 1;             // Command Interrupt on Complete
             __r : 1;
-            _rw cmdact : 1;
+            _rw cmdact : 1;             // Command Active
             __r : 1;
-            __r cmdstatus : 4;
+            __r cmdstatus : 4;          // Command Status
             __r : 16;
         } dgcmd_b;
     };
@@ -555,9 +538,18 @@ volatile struct {
     __r : 32; __r : 32;
 
     union {
-        _rw dalepena;   // Device Active USB Endpoint Enable Register 0xC720
+        _rw dalepena;                   // Device Active USB Endpoint Enable Register
         struct {
-            _rw usbactep : 32;  // USB Active Endpoints
+            //_rw usbactep : 32;        // USB Active Endpoints
+            __r : 24;                   // Reserved
+            _rw usbactep3in : 1;        // USB Active EP3-IN
+            _rw usbactep3out : 1;       // USB Active EP3-OUT
+            _rw usbactep2in : 1;        // USB Active EP2-IN
+            _rw usbactep2out : 1;       // USB Active EP2-OUT
+            _rw usbactep1in : 1;        // USB Active EP1-IN
+            _rw usbactep1out : 1;       // USB Active EP1-OUT
+            _rw usbactep0in : 1;        // USB Active EP0-IN
+            _rw usbactep0out : 1;       // USB Active EP0-OUT
         } dalepena_b;
     };
 
@@ -580,29 +572,34 @@ volatile struct {
 
     struct {
         union {
-            _rw par2;       // DEPCMD Parameter 2 Register 0xC800+(n*0x10)
+            _rw params[3];
             struct {
-                _rw parameter : 32;
-            } par2_b;
+                union {
+                    _rw par2;           // DEPCMD Parameter 2 Register
+                    struct {
+                        _rw parameter : 32;
+                    } par2_b;
+                };
+
+                union {
+                    _rw par1;           // DEPCMD Parameter 1 Register
+                    struct {
+                        _rw parameter : 32;
+                    } par1_b;
+                };
+
+                union {
+                    _rw par0;           // DEPCMD Parameter 0 Register
+                    struct {
+                        _rw parameter : 32;
+                    } par0_b;
+                };
+            };
         };
 
         union {
-            _rw par1;       // DEPCMD Parameter 1 Register 0xC804+(n*0x10)
+            _rw depcmd;                 // Device Physical Endpoint-n Command Registers
             struct {
-                _rw parameter : 32;
-            } par1_b;
-        };
-
-        union {
-            _rw par0;       // DEPCMD Parameter 0 Register 0xC808+(n*0x10)
-            struct {
-                _rw parameter : 32;
-            } par0_b;
-        };
-
-        union {
-            _rw depcmd;                 // Device Physical Endpoint-n Command Register
-            struct {                    //                          0xC80C+(n*0x10)
                 _rw cmdtyp : 4;         // Command type
                 __r : 4;                // Reserved 
                 _rw cmdioc : 1;         // Command Interrupt on Complete
@@ -642,11 +639,11 @@ volatile struct {
 
     // base + 0x300 here
 
-    union {
+    union {                             // Device interrupt Moderation Register
         _rw dev_imod0;
         struct {
-            _rw device_imodi : 16;
-            _rw device_imocd : 16;
+            _rw device_imodi : 16;      // Moderation Interval
+            _rw device_imodc : 16;      // Interrupt Moderation Down Counter
         } dev_imod0_b;
     };
 } *udev = (void *) (USB_BASE + 0xC700);
@@ -679,6 +676,80 @@ typedef union {
 
 } evt_t;
 
+// DEPEVT event type
+enum {
+    DEPEVT_XFERCOMPLETE = 0x1,  // EP/Stream trnsfer completed
+    DEPEVT_XFERINPROGRESS = 0x2,// Ep/Stream specific event happaned, continue transfer
+    DEPEVT_XFERNOTREADY = 0x3,  // No TRBs are available for the endpoint
+    DEPEVT_STREAMEVT = 0x6,     // Search withing EP transfer resource cache
+    DEPEVT_EPCMDCMPLT = 0x7     // EP Command complete
+} DEPEVT;
+
+// DEPEVT XferNotReady Event Status Control Data Stage
+#define DEPEVT_XFERNOTREADY_STS_CTRLDAT 0x1
+// DEPEVT XferNotReady Event Status Control Status Stage
+#define DEPEVT_XFERNOTREADY_STS_CTRLSTS 0x2
+
+// DEPEVT Event Status Structure
+typedef volatile union {
+    _rw val : 4;
+    
+    struct {                        // XferNotReady Event Status
+        _rw stage : 2;              // Requested stage
+        __r : 1;                    // Not Used
+        _rw active : 1;             // XferActive
+    } xfernotready;
+    
+    struct {                        // XferComplete Event Status
+        __r : 1;                    // Not Used
+        _rw sp_lst : 1;             // Short packet reception or the lasp packet of iso interval
+        _rw ioc : 1;                // IOC bit of the TRB
+        _rw missedisoc : 1;         // Interval did not complete successfully
+    } xfercomplete;
+
+    struct {                        // XferComplete Event Status
+        __r : 1;                    // Not Used
+        _rw sp_lst : 1;             // Short packet reception or the lasp packet of iso interval
+        _rw ioc : 1;                // IOC bit of the TRB
+        _rw lst : 1;                // LST bit of the TRB
+    } xferinprogress;
+
+    _rw stream : 4;             // Stream Event Status
+    
+    _rw epcmdcmplt : 4;         // EP Command Complete Event Status
+
+} depevt_sts_t;
+
+// DEVT event type
+enum {
+    DEVT_DISCONNEVT = 0x0,      // Disconnect detected event
+    DEVT_USBRST = 0x1,          // USB reset
+    DEVT_CONNECTDONE = 0x2,     // Connection Done
+    DEVT_ULSTCHNG = 0x03,       // USB/Link State Change
+    DEVT_WKUPEVT = 0x4,         // Resume/Remote Wakeup Detected Event
+    DEVT_HIBRQ = 0x5,           // Hibernation Request Event (not supported)
+    DEVT_USBSUSP = 0x6,         // USB Suspended Entry Event
+    DEVT_SOF = 0x7,             // Start of (micro-)Frame
+    DEVT_L1SUSP = 0x8,          // L1 Suspend Event
+    DEVT_ERRTICERR = 0x9,       // Erratic Error Event
+    DEVT_CMDCMPLT = 0xA,        // Generic Command Complete Event
+    DEVT_EVNTOVERFLOW = 0xB,    // Event Buffer Overflow Event
+    DEVT_VNDDEVTSTRCVED = 0xC,  // Vendor Device Test LMP Received Event
+    DEVT_L1RESM = 0xE,          // L1 Resume/RemoteWake Event
+    DEVT_ECCERR = 0x10          // ECC Error
+} DEVT;
+
+// Link state for DEVT_ULSTCHNG event
+enum {
+    DEVT_ULSTCHNG_ON = 0x0,             // ON state
+    DEVT_ULSTCHNG_L1SLP = 0x02,         // L1 state (sleep)
+    DEVT_ULSTCHNG_L2SUSP = 0x3,         // L2 state (suspend)
+    DEVT_ULSTCHNG_DISCONNECTED = 0x4,   // Disconnected state
+    DEVT_ULSTCHNG_EARLYSUSP = 0x5,      // Early suspend
+    DEVT_ULSTCHNG_RESET = 0xE,          // Reset
+    DEVT_ULSTCHNG_RESUME = 0xF          // Resume
+} DEVT_ULSTCHNG_LINKSTATE;
+
 // Command type the SW driver is requesting the controller to perform
 enum {
     CMDTYP_RESERVED = 0,
@@ -693,47 +764,121 @@ enum {
     CMDTYP_DEPSTARTCFG = 9  // Start New Configuration: No param
 } DEPCMD_CMDTYP;
 
-enum {
-    DEVT_DISCONNEVT = 0,
-    DEVT_USBRST,
-    DEVT_CONNECTDONE,
-    DEVT_ULSTCHNG,
-    DEVT_WKUPEVT,
-    // DEVT_HIBRQ not implemented
-    DEVT_USBSUSP = 6,
-    DEVT_SOF,
-    DEVT_L1SUSP,
-    DEVT_ERRTICERR,
-    DEVT_CMDCMPLT,
-    DEVT_EVNTOVERFLOW,
-    DEVT_VNDDEVTSTRCVED,
-    // reserved
-    DEVT_L1RESM = 14,
-    // reserved
-    DEVT_ECCERR = 16
-} DEVT;
+// DEPCFG Parameters Structure
+typedef volatile struct {
+    struct {                        // Parameter 2
+        __r : 1;                    // Reserved
+        _rw  epstate: 30;           // Endpoint State (if p0.configaction is 1)
+        __r : 1;                    // Reserved
+    };
 
-enum {
-    // reserved
-    DEPEVT_XFERCOMPLETE = 1,
-    DEPEVT_XFERINPROGRESS,
-    DEPEVT_XFERNOTREADY,
-    // not implemented
-    DEPEVT_STREAMEVT = 6,
-    DEPEVT_EPCMDCMPLT
-} DEPEVT;
+    struct {                        // Parameter 1
+        _rw intrnum: 5;             // Interrupt number
+        __r : 3;                    // Reserved
+        _rw xfercmplen : 1;         // XferComplete Enable
+        _rw xferinprogen : 1;       // XferInProgress Enable
+        _rw xfernrdyen : 1;         // XferNotReady Enable
+        __r : 2;                    // Reserved
+        _rw streamevten : 1;        // Stream Event Enable
+        _rw  tbrnotupdt: 1;         // Does not update HWO in TBR descriptor
+        _rw  ebcen: 1;              // External Buffer Control Mode Enable
+        _rw  bintervalm1: 8;        // bInterval value
+        _rw  strmcap: 1;            // Stream Capable
+        _rw  epnum: 5;              // USB Endpoint Number
+        __r : 1;                    // Reserved
+        _rw  fifobased: 1;          // FIFO-based data stream
+    };
 
+    struct {                        // Parameter 0
+        __r : 1;                    // Reserved
+        _rw eptype : 2;             // Endpoint Type
+        _rw mps : 11;               // Maximum Packet size
+        __r : 3;                    // Reserved
+        _rw fifonum : 5;            // FIFO Number
+        _rw brstsiz : 4;            // Burst Size
+        __r : 4;                    // Reserved
+        _rw configaction : 2;       // Config Action
+    };
+
+} depcfg_params_t;
+
+// DEPCFG Param0: Config Actions
 enum {
-    // reserved
-    TRBCTL_NORMAL = 1,
-    TRBCTL_CTL_SETUP,
-    TRBCTL_CTL_STAT2,
-    TRBCTL_CTL_STAT3,
-    TRBCTL_CTL_DATA,
-    TRBCTL_ISO_FIRST,
-    TRBCTL_ISO,
-    TRBCTL_LINK,
-    TRBCTL_NORMAL_ZLP
+    DEPCFG_CONFIGACTION_INIT = 0,   // Initialize endpoint state
+    DEPCFG_CONFIGACTION_RESTORE = 1,// Restore endpoint state
+    DEPCFG_CONFIGACTION_MODIFY = 2  // Modify endpoint state
+} DEPCFG_CONFIGACTION;
+
+// DEPCFG Param0: Transfer type supported by USB endpoint
+enum {
+    DEPCFG_EPTYPE_CONTROL = 0,      // Control
+    DEPCFG_EPTYPE_ISOCHRONOUS = 1,  // Isochronous
+    DEPCFG_EPTYPE_BULK = 2,         // Bulk
+    DEPCFG_EPTYPE_INTERRUPT = 3     // Interrupt
+} DEPCFG_EPTYPE;
+
+// DEPCFERCFG Parameters Structure
+typedef volatile struct {
+    __r : 32;                       // Parameter 2 (Reserved)
+    __r : 32;                       // Parameter 1 (Reserved)
+    struct {                        // Parameter 0
+        _rw numxferres : 16;        // Number of Transfer Resources
+        __r : 16;                   // Reserved
+    };
+} depxfercfg_params_t;
+
+// DEPSTRTXFER Parameters Structure
+typedef volatile struct {
+    __r par2: 32;                   // Parameter 2 (Reserved)
+    _rw tdaddrlow: 32;              // Transfer Descriptor Address (Low)
+    _rw tdaddrhigh: 32;             // Transfer Descriptor Address (High)
+} depstrtxfer_params_t;
+
+// TRB Control and Status Structure
+typedef struct {
+    _rw bptrl: 32;                  // Buffer Pointer Low
+    _rw bptrh: 32;                  // Buffer Pointer High
+    struct {
+        _rw bufsiz : 24;            // Buffer Size
+        _rw pcm1: 2;                // Packet Count M1
+        _rw spr: 1;                 // Short Packet Received
+        __r : 1;                    // Reserved
+        _rw trbsts: 4;              // TRB Status
+    };
+    struct {
+        _rw hwo : 1;                // Hardware Owner of Descriptor
+        _rw lst : 1;                // Last TRB
+        __r chn : 1;                // Chain Buffers
+        __r csp : 1;                // Continue on Short Packet
+        _rw trbctl : 6;             // TRB Control
+        _rw ispimi : 1;             // Interrupt on Short Packet / MissedIsoc
+        _rw intcmpl : 1;            // Interrupt on Complete
+        __r : 2;                    // Reserved
+        _rw streamid : 16;          // Stream ID / SOF Number
+        __r : 2;                    // Reserved
+    };
+} trb_t;
+
+// TRB Status
+enum {
+    TRB_STATUS_OK = 0x0,            // OK
+    TRB_STATUS_MISSEDISOC = 0x1,    // Isochronous interval missed or incomplete
+    TRB_STATUS_SETUPPEND = 0x2,     // Setup Pending
+    TRB_STATUS_XFERINPROG = 0x4,    // Transfer In Progress 
+    TRB_STATUS_ZLPPENDING = 0xF     // Zero-length-packet pending
+} TRB_STATUS;
+
+// TRB Control
+enum {
+    TRBCTL_NORMAL = 0x1,            // Normal
+    TRBCTL_CTL_SETUP = 0x2,         // Control-Setup
+    TRBCTL_CTL_STAT2 = 0x3,         // Control-Status-2 (SETUP w/o data stage)
+    TRBCTL_CTL_STAT3 = 0x4,         // Control-Status-3 (SETUP w/ data stage)
+    TRBCTL_CTL_DATA = 0x5,          // Control-Data (the 1st TRB of a data statge)
+    TRBCTL_ISO_FIRST = 0x6,         // Isochronous-First (the 1st TRB of a SERVICE Interval)
+    TRBCTL_ISO = 0x7,               // Isochronous
+    TRBCTL_LINK = 0x8,              // Link TRB
+    TRBCTL_NORMAL_ZLP = 0x9         // Normal-ZLP (Bulk IN)
 } TRBCTL;
 
 #endif // DCD_ENSEMBLE_DEF_H
