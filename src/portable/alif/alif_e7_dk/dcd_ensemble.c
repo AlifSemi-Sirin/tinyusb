@@ -29,9 +29,9 @@
 // Logging definitions
 #if defined(TUSB_ALIF_DEBUG)
 #if (TUSB_ALIF_DEBUG_DEPTH > 1)
-#define LOG(...)      memset(logbuf[bi % TUSB_ALIF_DEBUG_DEPTH], ' ', 48);\
-                          snprintf(logbuf[(bi++) % TUSB_ALIF_DEBUG_DEPTH], 48, __VA_ARGS__);
-char logbuf[TUSB_ALIF_DEBUG_DEPTH][48];
+#define LOG(...)      { int _bi = bi++; memset(logbuf[_bi % TUSB_ALIF_DEBUG_DEPTH], ' ', 48);\
+                        snprintf(logbuf[(_bi) % TUSB_ALIF_DEBUG_DEPTH], 48, __VA_ARGS__); }
+char logbuf[TUSB_ALIF_DEBUG_DEPTH][48] __attribute__((aligned(16)));
 int bi = 0;
 #else
 #define LOG(...)      memset(logbuf, ' ', 48);\
@@ -240,13 +240,13 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
     if ((gsnpsid & 0xFFFF0000) != GSNPSID_HIGH) {
         // Invalid USB controller ID!
         LOG("INVLUSBCTRLID=0x%08x(expected 0x%08x)",
-            gsnpsid, (ALIF_USB_GSNPSID_HIGH | ALIF_USB_GSNPSID_LOW));
+            gsnpsid, (GSNPSID_HIGH | GSNPSID_LOW));
         return false;
     }
     if ((gsnpsid & 0x0000FFFF) != GSNPSID_LOW) {
         // Unsupported USB controller version!
         LOG("USBCTRLVER=0x%08x(expected 0x%08x)",
-            gsnpsid, (ALIF_USB_GSNPSID_HIGH | ALIF_USB_GSNPSID_LOW));
+            gsnpsid, (GSNPSID_HIGH | GSNPSID_LOW));
     }
 
     // Configure USB2 PHY
@@ -401,7 +401,7 @@ void dcd_int_handler(uint8_t rhport)
         _dcd_invalidate_dcache(_evnt_buf, sizeof(_evnt_buf));
         evt_t e = {.val = *_evnt_tail++};
 
-        LOG("%010u IRQ loop, evntcount %u evnt %08x", DWT->CYCCNT,
+        LOG("%010u IRQloop, evtcnt %u evt %08x", DWT->CYCCNT,
             ugbl->gevntcount0_b.evntcount, e.val);
 
         // wrap around
@@ -514,6 +514,10 @@ void dcd_edpt0_status_complete(uint8_t rhport, tusb_control_request_t const * re
 bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep) {
     (void) rhport;
 
+    LOG("%010u >%s 0x%x %s %u %u", DWT->CYCCNT, __func__, desc_ep->bEndpointAddress,
+        desc_ep->bmAttributes.xfer == TUSB_XFER_BULK ? "bulk" : "int",
+        desc_ep->wMaxPacketSize, desc_ep->bInterval);
+
     if (TUSB_XFER_ISOCHRONOUS == desc_ep->bmAttributes.xfer)
         return false;
 
@@ -624,6 +628,8 @@ void dcd_edpt_close(uint8_t rhport, uint8_t ep_addr) {
 // Submit a transfer, When complete dcd_event_xfer_complete() is invoked to
 // notify the stack
 bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t total_bytes) {
+
+    LOG("%010u >%s %x %x %u", DWT->CYCCNT, __func__, ep_addr, (uint32_t) buffer, total_bytes);
 
     uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
 
@@ -870,7 +876,7 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
         //case DEPEVT_EPCMDCMPLT:// redundant, currently no commands are issued with IOC bit set
         //case DEPEVT_STREAMEVT:
         default:{
-            LOG("Unhandled link status change: %d", evt)
+            LOG("Unhandled link status change: %d", evt);
         }
     }
 }
@@ -910,11 +916,11 @@ static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info) {
             #if CFG_TUD_MAX_SPEED == OPT_MODE_DEFAULT_SPEED || \
                 CFG_TUD_MAX_SPEED == OPT_MODE_HIGH_SPEED
             if (udev->dsts_b.connectspd != DSTS_CONNECTSPD_HS) {
-                LOG("Wrong device speed [%d], expected HS", udev->dsts.connectspd)
+                LOG("Wrong device speed [%d], expected HS", udev->dsts_b.connectspd);
             }
             #elif CFG_TUD_MAX_SPEED == OPT_MODE_FULL_SPEED
             if (udev->dsts_b.connectspd != DSTS_CONNECTSPD_FS) {
-                LOG("Wrong device speed [%d], expected FS", udev->dsts.connectspd)
+                LOG("Wrong device speed [%d], expected FS", udev->dsts_b.connectspd);
             }
             #endif
 
@@ -982,12 +988,12 @@ static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info) {
                 //case DEVT_ULSTCHNG_EARLYSUSP:
                 //case DEVT_ULSTCHNG_RESET:
                 default: {
-                    LOG("Unhandled link status change: %d", info & 0x0F)
+                    LOG("Unhandled link status change: %d", info & 0x0F);
                 }
           }
         } break;
         case DEVT_ERRTICERR: {
-            LOG("Erratic Error Event")
+            LOG("Erratic Error Event");
             __BKPT(0);
         } break;
         //case DEVT_DISCONNEVT: {
