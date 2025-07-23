@@ -89,6 +89,7 @@ static volatile uint32_t *_evnt_tail = NULL;
 static bool _ctrl_long_data = false;
 static volatile bool _xfer_cfgd = false;
 static uint32_t _sts_stage = 0;
+static uint16_t _ep_dir_out_mps[4] = {512, 0, 0, 0};
 
 /// Private Functions ----------------------------------------------------------
 
@@ -521,6 +522,11 @@ bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep) {
     if (TUSB_XFER_ISOCHRONOUS == desc_ep->bmAttributes.xfer)
         return false;
 
+    if (tu_edpt_dir(desc_ep->bEndpointAddress) == TUSB_DIR_OUT) {
+        // controller requires max size requests on OUT endpoints, save this when opening
+        _ep_dir_out_mps[tu_edpt_number(desc_ep->bEndpointAddress)] = desc_ep->wMaxPacketSize;
+    }
+
     uint8_t ep = (tu_edpt_number(desc_ep->bEndpointAddress) << 1) |
                   tu_edpt_dir(desc_ep->bEndpointAddress);
     // [TODO] verify that the num doesn't exceed hw max
@@ -677,9 +683,11 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t t
             if (tu_edpt_dir(ep_addr) == TUSB_DIR_IN) {
                 _dcd_clean_dcache(buffer, total_bytes);
             } else {
-                // FIXME: controller requires max
-                // size requests on OUT endpoints
-                total_bytes = 512;
+                // Controller requires max size requests on OUT endpoints
+                if (total_bytes < _ep_dir_out_mps[tu_edpt_number(ep_addr)]) {
+                    total_bytes = _ep_dir_out_mps[tu_edpt_number(ep_addr)];
+                    LOG(">%s ep%u total_bytes = %u", __func__, ep, total_bytes );
+                }
             }
             _dcd_start_xfer(ep, buffer, total_bytes,
                             total_bytes ? TRBCTL_NORMAL : TRBCTL_NORMAL_ZLP);
