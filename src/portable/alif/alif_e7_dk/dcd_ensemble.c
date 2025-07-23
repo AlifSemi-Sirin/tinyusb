@@ -60,29 +60,7 @@ char logbuf[48];
 
 #endif 
 
-// Zephyr specific USB definitions
-#if CFG_TUSB_OS == OPT_OS_ZEPHYR
-
-#define DEPEVT_STS_NOTREADY_MASK 0x0B
-#define DEPEVT_STS_NOTREADY_CODE 0x02
-
-#if CFG_TUD_MAX_SPEED == OPT_MODE_HIGH_SPEED || CFG_TUD_MAX_SPEED == OPT_MODE_DEFAULT_SPEED
-  #define ALIF_DEVSPD_SETTING 0x0 /* High-speed */
-  #define ALIF_TUSB_SPEED TUSB_SPEED_HIGH
-  #define ALIF_MAX_PCK_SIZE 512
-#elif CFG_TUD_MAX_SPEED == OPT_MODE_FULL_SPEED
-  #define ALIF_DEVSPD_SETTING 0x1 /* Full-speed */
-  #define ALIF_TUSB_SPEED TUSB_SPEED_FULL
-  #define ALIF_MAX_PCK_SIZE 64
-#else
-  #error "Alif USB supports full/high speed only."
-#endif
-
-#define XHC_REG_RD(addr) sys_read32((addr))
-#define XHC_REG_WR(addr, val) sys_write32((val), (addr))
-
-#endif
-
+// Defines --------------------------------------------------------
 #define MAX_PACKET_SIZE                 512
 #define MAX_PACKET_SIZE_ON_USB_RESET    64
 #define SETUP_PACKET_SIZE       8
@@ -109,9 +87,9 @@ static uint32_t _sts_stage = 0;
 
 /// Private Functions ----------------------------------------------------------
 
-static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t type);
 static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t sts, uint16_t par);
 static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info);
+static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t type);
 static uint8_t _dcd_cmd_wait(uint8_t ep, uint8_t typ, uint16_t param);
 
 // Helpers
@@ -512,7 +490,7 @@ void dcd_disconnect(uint8_t rhport) {
     
     // Disconnect from the host
     udev->dctl_b.run_stop = 0;
-    // Wait until device controller is halted
+    // TODO: Wait until device controller is halted
     //while(udev->dsts_b.devctrlhlt != 1);    
 }
 
@@ -827,8 +805,6 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
                             _sts_stage = 0;
                             dcd_event_xfer_complete(rhport, tu_edpt_addr(0, TUSB_DIR_OUT),
                                                     0, XFER_RESULT_SUCCESS, true);
-
-                            // *(volatile uint32_t*) 0x4900C000 ^= 8; // [TEMP]
                         }
                     }
                 } else {
@@ -848,8 +824,6 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
                         _sts_stage = 0;
                         dcd_event_xfer_complete(rhport, tu_edpt_addr(0, TUSB_DIR_IN),
                                                 0, XFER_RESULT_SUCCESS, true);
-
-                        // *(volatile uint32_t*) 0x4900C000 ^= 8; // [TEMP]
                     }
                 }
             } else {
@@ -860,10 +834,10 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
                     //_dcd_invalidate_dcache((void*) _xfer_trb[ep][0],
                     //                    512/*_xfer_bytes[ep]*/ - _xfer_trb[ep][2]);
                     _dcd_invalidate_dcache((void*) trb->bptrl,
-                                           512/*_xfer_bytes[ep]*/ - trb->bufsiz);
+                                           MAX_PACKET_SIZE/*_xfer_bytes[ep]*/ - trb->bufsiz);
                     dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep >> 1, ep & 1),
                                         //512 - _xfer_trb[ep][2],
-                                        512 - trb->bufsiz,
+                                        MAX_PACKET_SIZE - trb->bufsiz,
                                         XFER_RESULT_SUCCESS, true);
                 } else {
                     dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep >> 1, ep & 1),
@@ -894,7 +868,6 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
                 break;
             }
 
-            // TODO: Check why it is (ep < 1)
             if ((ep < 1) &&
                 // (sts & (1 << 3))
                 depevt_sts.xfernotready.active) {
@@ -908,8 +881,9 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
 
                     // Reset the TRB byte count and clean the D-cache
                     _dcd_invalidate_dcache(trb, sizeof(trb_t));
-                    _xfer_trb[ep][2] = _xfer_bytes[ep];
+                    //_xfer_trb[ep][2] = _xfer_bytes[ep];
                     // FIXME: ??? trb->bufsiz = _xfer_bytes[ep];
+                    trb->bufsiz = _xfer_bytes[ep];
                     _dcd_clean_dcache(trb, sizeof(trb_t));
 
                     // Prepare EP command
@@ -920,9 +894,6 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
                     depstrtxfer_params->tdaddrhigh = 0;
                     // Issue the block command
                     _dcd_cmd_wait(ep, CMDTYP_DEPSTRTXFER, 0);
-
-                    // TODO: replace with meaningful string
-                    *(volatile uint32_t*) 0x49007000 ^= 16;
                 }
             }
         } break;
