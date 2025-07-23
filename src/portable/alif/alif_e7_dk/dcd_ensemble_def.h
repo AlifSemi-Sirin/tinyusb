@@ -1,30 +1,14 @@
+/* Copyright (C) 2025 Alif Semiconductor - All Rights Reserved.
+ * Use, distribution and modification of this code is permitted under the
+ * terms stated in the Alif Semiconductor Software License Agreement
+ *
+ * You should have received a copy of the Alif Semiconductor Software
+ * License Agreement with this file. If not, please write to:
+ * contact@alifsemi.com, or visit: https://alifsemi.com/license
+ *
+ */
 #ifndef DCD_ENSEMBLE_DEF_H
 #define DCD_ENSEMBLE_DEF_H
-
-#if CFG_TUSB_OS == OPT_OS_ZEPHYR
-
-#include <zephyr/sys/util.h> // for BIT macros
-#include <soc_common.h>
-#include <soc_memory_map.h>    
-
-// Enable USB_CLK and 10M_CLK (CLK_ENA Register)
-#define CLK_ENA_CLK20M              BIT(22)
-
-// Enable clock for USB (PERIPH_CLK_ENA Register)
-#define PERIPH_CLK_ENA_USB_CKEN     BIT(20) 
-
-// USB PHY Power Control (PWR_CTRL Register)
-#define PWR_CTRL_UPHY_ISO           BIT(17) // USB PHY Isolation Enable
-#define PWR_CTRL_UPHY_PWR_MASK      BIT(16) // USB PHY Power Mask
-
-// USB PHY PoR Reset Mask (USB_CTRL2 Register)
-#define USB_CTRL2_POR_RST_MASK      BIT(8)
-
-// USB Interrupt Number Definition
-#define USB_NODE DT_NODELABEL(usb0)
-#define USB_IRQ_IRQn DT_IRQN(USB_NODE)
-
-#endif
 
 // Alif USB ID definitions (Global Id Register)
 #define GSNPSID_HIGH            0x55330000  // Core Identification Number
