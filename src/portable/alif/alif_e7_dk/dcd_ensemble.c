@@ -36,7 +36,8 @@
 #define USB_ALIF_IRQ DT_IRQN(USB_NODE)
 
 #define DEPEVT_STS_NOTREADY_MASK 0x0B
-#define DEPEVT_STS_NOTREADY_CODE 0x02
+#define DEPEVT_STS_NOTREADY_CTRL_DATA_RQ 0x01
+#define DEPEVT_STS_NOTREADY_CTRL_STAT_RQ 0x02
 #define DEPEVT_STS_XFER_ACTIVE   (1U << 3)
 
 #define CONFIG_USB_DEVICE_HIGH_SPEED// ALIF USB HIGH-speed mode activated
@@ -69,9 +70,20 @@ __aligned(32) CFG_TUSB_MEM_SECTION
 __aligned(32) CFG_TUSB_MEM_SECTION
     static uint32_t _xfer_trb[TUP_DCD_ENDPOINT_MAX][4];// [TODO] runtime alloc
 
-static uint16_t _xfer_bytes[TUP_DCD_ENDPOINT_MAX];
-static bool _xfer_isochron[4];       // ISOCHRONOUS endpoint status (4 physical endpoints)
+#define ISO_CHAIN_MAX 16
+__aligned(32) CFG_TUSB_MEM_SECTION 
+    static uint32_t _xfer_trb_iso[ISO_CHAIN_MAX][4];       // isochronous transfer TRBs
 
+__aligned(32) CFG_TUSB_MEM_SECTION  
+static uint8_t iso_test_data[ISO_CHAIN_MAX * ALIF_MAX_PCK_SIZE];
+
+
+static uint16_t _xfer_bytes[TUP_DCD_ENDPOINT_MAX];
+static uint16_t _iso_mps[TUP_DCD_ENDPOINT_MAX]; // ISOCHRONOUS endpoint max packet size
+static bool _xfer_isochron[TUP_DCD_ENDPOINT_MAX];       // ISOCHRONOUS endpoint status (4 physical endpoints)
+
+static uint8_t * buff_test;
+static uint8_t buff_test_size;
 
 /// API Extension --------------------------------------------------------------
 static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t cmd_type, uint16_t param);
@@ -84,7 +96,8 @@ static uint32_t _sts_stage = 0;
 /// Private Functions ----------------------------------------------------------
 
 static uint8_t _dcd_start_xfer(uint8_t ep, void *buf, uint32_t size, uint8_t type);
-static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep_index, uint8_t evt, uint8_t sts);
+static uint8_t _dcd_start_xfer_iso(uint8_t ep, void *buf, uint32_t size, uint16_t start_frame);
+static void _dcd_handle_depevt(uint8_t rhport, const evt_t *evt);
 static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info);
 
 void dcd_uninit(void);
@@ -145,6 +158,11 @@ static inline void usb_ctrl2_phy_power_on_reset_clear(void) {
 bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
 {
   (void) rh_init;
+
+  // fill the test buffer with some data
+  for (int i = 0; i < sizeof(iso_test_data); i++) {
+    iso_test_data[i] = 0xA5;
+  }
 
   // enable 20mhz clock
   enable_cgu_clk20m();
@@ -248,7 +266,7 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init)
   _xfer_trb[ep][1] = 0;
   _xfer_trb[ep][2] = 8;
   _xfer_trb[ep][3] = (1 << 11) | (1 << 10) | (TRBCTL_CTL_SETUP << 4) | (1 << 1) | (1 << 0);
-  sys_cache_data_flush_range(_xfer_trb[ep], sizeof(_xfer_trb[ep]));
+  sys_cache_data_flush_range(_xfer_trb[ep], sizeof(_xfer_trb[0]));
 
   // send trb to the usb dma
   XHC_REG_WR(DEPCMDPAR1N(ep), (uint32_t) local_to_global(_xfer_trb[ep]));
@@ -298,7 +316,8 @@ void dcd_int_handler(uint8_t rhport)
 
     // dispatch the right handler for the event type
     if (e.depevt.is_devt == 0) {// DEPEVT
-      _dcd_handle_depevt(rhport, e.depevt.ep, e.depevt.evt, e.depevt.sts);
+    //   _dcd_handle_depevt(rhport, e.depevt.ep, e.depevt.evt, e.depevt.sts);
+      _dcd_handle_depevt(rhport, &e);
     } else {// DEVT
       _dcd_handle_devt(rhport, e.devt.evt, e.devt.info);
     }
@@ -417,7 +436,7 @@ bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
     uint8_t ep = (tu_edpt_number(desc_ep->bEndpointAddress) << 1) |
                 tu_edpt_dir(desc_ep->bEndpointAddress);
 
-    LOG_ALIF_SHORT("-->> +: %x", desc_ep->bEndpointAddress);
+    // LOG_ALIF_SHORT("-->> +: %x", desc_ep->bEndpointAddress);
 
   if (false == _xfer_cfgd) {
     // Endpoint Configuration - Start config phase
@@ -427,22 +446,31 @@ bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep)
 
     uint8_t fifo_num = TUSB_DIR_IN == tu_edpt_dir(desc_ep->bEndpointAddress) ?
                       tu_edpt_number(desc_ep->bEndpointAddress) : 0;
-    uint8_t interval = 0 < desc_ep->bInterval ? (desc_ep->bInterval - 1) : 0;
+    
+    bool is_high_speed = (XHC_REG_RD(DSTS_REG) & DCFG_SPEED_MASK) == 0x0; // 0x00/0x01/0x04 - High/Full/SuperSpeed
+
+    uint8_t bInterval_m1; // bInterval value minus 1. The valid values for this field are 0x0 through 0xD
+    if (is_high_speed) {
+      bInterval_m1 = desc_ep->bInterval > 0
+                    ? desc_ep->bInterval - 1
+                    : 0;
+    } else {
+      bInterval_m1 = 0;
+    }
 
     cfg1 =  (ep << 25)          // USB Endpoint Number
-            | (interval << 16)  // Bit 16-23: bInterval
+            | (bInterval_m1 << 16)  // Bit 16-23: (bInterval - 1)
             | (1U << 10)        // Bit 10: XferNotReady Enable (XferNRdyEn)
             | (1U << 8);        // Bit 8: XferComplete Enable (XferCmplEn)
     
     if ( TUSB_XFER_ISOCHRONOUS == desc_ep->bmAttributes.xfer ) {
-        cfg1 |= (1U << 31);     // FIFO-based. Set to 1 if this isochronous endpoint
-        _xfer_isochron[tu_edpt_number(desc_ep->bEndpointAddress)] = true;
-        LOG_ALIF_SHORT("-->>+ iso: %x, fifo_num=%u", ep, fifo_num);
+        // cfg1 |= (1U << 31);     // FIFO-based. Set to 1 if this isochronous endpoint
+        _xfer_isochron[ep] = true;
+        _iso_mps[ep] = desc_ep->wMaxPacketSize & 0x7FF; // store ISO MPS for later use
+        LOG_ALIF_SHORT("-->>+ iso: %x, interval: %u", ep, bInterval_m1);
     }
     
-    cfg0 =  (0 << 30)           // Config Action
-            | (0 << 22)         // Burst Size (BrstSiz)
-            | (fifo_num << 17)  // FIFO Number (FIFONum) ?? for isochronous ep?
+    cfg0 =  (fifo_num << 17)  // FIFO Number (FIFONum) ?? for isochronous ep?
             | ((desc_ep->wMaxPacketSize & 0x7FF) << 3)
             | (desc_ep->bmAttributes.xfer << 1);
 
@@ -523,54 +551,21 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t t
 {
   (void) rhport;
 
-   LOG_ALIF_SHORT("-->>xf: %x, len=%u", ep_addr, total_bytes);
-
   uint8_t ep = (tu_edpt_number(ep_addr) << 1) | tu_edpt_dir(ep_addr);
-    uint8_t num_pkts;
 
   // ISOCHRONOUS
-  if (_xfer_isochron[tu_edpt_number(ep_addr)]) {
-    // calculate number of packets
-    num_pkts = (total_bytes + ALIF_MAX_PCK_SIZE - 1)
-               / ALIF_MAX_PCK_SIZE;
-    _xfer_bytes[ep] = total_bytes;
+  if (_xfer_isochron[ep]) {
+    LOG_ALIF_SHORT("-->>xf iso: %x, len=%u", ep_addr, total_bytes);
+    // _dcd_start_xfer_iso(ep, buffer, total_bytes, 0);
+    _dcd_start_xfer_iso(ep, iso_test_data, sizeof(iso_test_data), 0);
 
-    // если IN — flush cache before transfer
-    if (tu_edpt_dir(ep_addr) == TUSB_DIR_IN) {
-      sys_cache_data_flush_range(buffer, total_bytes);
-    }
+    buff_test = buffer;
+    buff_test_size = total_bytes;
 
-    // 2) Fill chain of TRBs for isochronous transfer
-    for (uint8_t i = 0; i < num_pkts; i++) {
-      uint8_t trb_type = (i == 0)
-                       ? TRBCTL_ISO_FIRST     // first packet
-                       : TRBCTL_ISO;            // subsequent packets
-      uint32_t len = MIN((uint32_t)ALIF_MAX_PCK_SIZE,
-                         (uint32_t)(total_bytes - i * ALIF_MAX_PCK_SIZE));
-
-      _xfer_trb[ep][0] = (uint32_t)local_to_global(buffer + i * ALIF_MAX_PCK_SIZE);
-      _xfer_trb[ep][1] = 0;
-      _xfer_trb[ep][2] = len;
-      _xfer_trb[ep][3] = (1U << 11)                   // IOC
-                       | (1U << 10)                   // IMI (Interrupt on Missed Isoc)
-                       | (trb_type << 4)             // TRBCTL_ISO_FIRST / ISOCHRONOUS
-                       | (1U << 3)              /* CSP – Continue on Short Packet */
-                       | ((i < num_pkts - 1) << 2)   // CHN = 1 для всех кроме последнего
-                       | ((i == num_pkts-1) << 1)    // Last TRB (LST)
-                       | (1U << 0);                  // HWO
-      sys_cache_data_flush_range(_xfer_trb[ep], sizeof(_xfer_trb[ep]));
-    }
-
-    // set to controller TRB buffer chain
-    XHC_REG_WR(DEPCMDPAR1N(ep),
-               (uint32_t)local_to_global(_xfer_trb[ep]));
-    XHC_REG_WR(DEPCMDPAR0N(ep), 0);
-
-    // 3) Kick off transfer — parameter 0 is next available microframe
-    (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSTRTXFER, 0);
     return true;
   }    
 
+   LOG_ALIF_SHORT("-->>xf: %x, len=%u", ep_addr, total_bytes);
   switch (ep) {
     case 0: {// CONTROL OUT
       if (total_bytes > 0) {
@@ -722,8 +717,20 @@ static uint8_t usb_dc_alif_send_ep_cmd(uint8_t ep, uint8_t typ, uint16_t param)
  * \param sts       DEPEVT status field (used for “Not Ready” codes or other flags)
  * \param par       DEPEVT parameter field (typically unused for IN/OUT transfers)
  */
-static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t sts)
+static void _dcd_handle_depevt(uint8_t rhport, const evt_t *ep_evt)
 {
+    if (ep_evt->depevt.is_devt) return; // Not a DEPEVT, skip
+
+  const uint8_t ep = ep_evt->depevt.ep;
+  const uint8_t evt = ep_evt->depevt.evt;
+  const uint8_t sts = ep_evt->depevt.sts;
+  const uint16_t par = ep_evt->depevt.par;
+
+  // LOG_ALIF_INFO("DEPEVT: ep=%u, evt=%u, sts=%02x, par=%04x",
+  //               (unsigned) ep, (unsigned) evt, (unsigned) sts, depevt.par);
+
+  // Validate endpoint index
+
   if (!(ep < TUP_DCD_ENDPOINT_MAX)) {
     TU_MESS_FAILED();
     TU_BREAKPOINT();
@@ -804,24 +811,35 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
     case DEPEVT_XFERNOTREADY: {
       // Transfer-not-ready indicates endpoint needs re-arming
 
-        LOG_ALIF_SHORT("-->>nr: %x, sts=%x", ep, sts);
         if (_xfer_isochron[ep]) {
-            // ISOCHRONOUS endpoint: re-arm with the next microframe
-            LOG_ALIF_SHORT("-->>iso");
+            // ISOCHRONOUS endpoint
+            bool active = sts & DEPEVT_STS_XFER_ACTIVE;
+            if(!active)
+            {
+                // Host initiated a transfer, but the requested transfer is not present in the hardware.
+                LOG_ALIF_SHORT("X par: %x, sts=%x", par, sts);
+                // _dcd_start_xfer_iso(ep, buff_test, buff_test_size, par);
+                _dcd_start_xfer_iso(ep,
+                          iso_test_data,
+                          sizeof(iso_test_data),
+                          par /*par=StartFrame*/);
+            }
+            else {
+               // Host initiated a transfer, the transfer is present, but no valid TRBs are available.
+                usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSTRTXFER, par);
+            }
+            break;
+        }
 
-            // param ‘sts’ содержит start_frame для следующих микрофреймов
-            usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSTRTXFER, sts);
-            return;
-        }        
-
+        // LOG_ALIF_SHORT("-->>nr: %x, sts=%x", ep, sts);
         // EP0 OUT and IN are special cases
-        if ((0 == ep) && (DEPEVT_STS_NOTREADY_CODE == (sts & DEPEVT_STS_NOTREADY_MASK))) {
+        if ((0 == ep) && (DEPEVT_STS_NOTREADY_CTRL_STAT_RQ == (sts & DEPEVT_STS_NOTREADY_MASK))) {
             _xfer_bytes[ep] = 0;
             _dcd_start_xfer(ep, _ctrl_buf, 64, TRBCTL_CTL_STAT3);
             break;
         }
 
-      if ((1 == ep) && (DEPEVT_STS_NOTREADY_CODE == (sts & DEPEVT_STS_NOTREADY_MASK))) {
+      if ((1 == ep) && (DEPEVT_STS_NOTREADY_CTRL_STAT_RQ == (sts & DEPEVT_STS_NOTREADY_MASK))) {
         _dcd_start_xfer(ep, NULL, 0, TRBCTL_CTL_STAT2);
         break;
       }
@@ -947,9 +965,57 @@ static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t typ
   /* Re-enable USB interrupt before issuing command */
   NVIC_EnableIRQ(USB_ALIF_IRQ);
 
-  (void) usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSTRTXFER, 0);
-
-  return 0;
+  return usb_dc_alif_send_ep_cmd(ep, CMDTYP_DEPSTRTXFER, 0);
 }
+
+static uint8_t _dcd_start_xfer_iso(uint8_t ep, void* buf, uint32_t size, uint16_t start_frame)
+{
+    uint32_t mps = _iso_mps[ep];
+    uint8_t num_trb = (size + mps - 1) / mps;
+    if (num_trb > ISO_CHAIN_MAX) num_trb = ISO_CHAIN_MAX;
+
+    _xfer_bytes[ep] = size;
+
+    // 2) Сброс D-cache для всего буфера данных
+    sys_cache_data_flush_range(buf, size);
+
+    // 3) Заполняем цепочку TRB
+    for (uint8_t i = 0; i < num_trb; i++) {
+        uint32_t ptr = (uint32_t)local_to_global((uint8_t*)buf + i * mps);
+        uint32_t len = MIN(mps, size - i * mps);
+        uint32_t type = (i == 0) ? TRBCTL_ISO_FIRST : TRBCTL_ISO;
+        uint32_t chain = (i < num_trb - 1) ? (1U << 2) : 0U; // CHN
+        uint32_t last  = (i == num_trb - 1) ? (1U << 1) : 0U; // LST
+
+        _xfer_trb_iso[i][0] = ptr;      // Buffer Pointer Low
+        _xfer_trb_iso[i][1] = 0;        // Buffer Pointer High
+        _xfer_trb_iso[i][2] = len;      // Transfer Length
+        _xfer_trb_iso[i][3] =
+             (1U << 11)                 // IOC: interrupt on complete
+           | (1U << 10)                 // IMI: interrupt on missed isoc
+           | (type   <<  4)             // TRB type (ISO_FIRST / ISO)
+           | (1U     <<  3)             // CSP: continue on short pkt
+           | chain                      // CHN: chain bit
+           | last                       // LST: last TRB
+           | (1U     <<  0);            // HWO: hardware owner
+    }
+
+    // 4) Сброс D-cache для всей цепочки TRB сразу
+    sys_cache_data_flush_range(_xfer_trb_iso,
+                              num_trb * sizeof(_xfer_trb_iso[0]));
+
+    // 5) Записываем адрес TRB-ring в контроллер
+    NVIC_DisableIRQ(USB_ALIF_IRQ);
+    XHC_REG_WR(DEPCMDPAR1N(ep),
+               (uint32_t)local_to_global(_xfer_trb_iso[0]));
+    XHC_REG_WR(DEPCMDPAR0N(ep), 0);
+    NVIC_EnableIRQ(USB_ALIF_IRQ);
+
+    // 6) Запускаем передачу на заданный microframe
+    return usb_dc_alif_send_ep_cmd(ep,
+                                   CMDTYP_DEPSTRTXFER,
+                                   start_frame);    
+}
+
 
 #endif
