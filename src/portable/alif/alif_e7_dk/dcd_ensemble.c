@@ -682,7 +682,6 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t t
             }
         } break;
         default: { // DATA EPs (BULK & INTERRUPT only)
-            _xfer_bytes[ep] = total_bytes;
             if (tu_edpt_dir(ep_addr) == TUSB_DIR_IN) {
                 _dcd_clean_dcache(buffer, total_bytes);
             } else {
@@ -692,6 +691,7 @@ bool dcd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t t
                     LOG(">%s ep%u total_bytes = %u", __func__, ep, total_bytes);
                 }
             }
+            _xfer_bytes[ep] = total_bytes;
             _dcd_start_xfer(ep, buffer, total_bytes,
                             total_bytes ? TRBCTL_NORMAL : TRBCTL_NORMAL_ZLP);
         }
@@ -829,18 +829,11 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
                 LOG("ep%u xfer trb3 = %08x trb2 = %08x", ep, _xfer_trb[ep][3], _xfer_trb[ep][2]);
                 trb_t *trb = (trb_t *)_xfer_trb[ep];
                 if (tu_edpt_dir(tu_edpt_addr(ep >> 1, ep & 1)) == TUSB_DIR_OUT) {
-                    uint32_t total_bytes = _ep_dir_out_mps[ep >> 1] > _xfer_bytes[ep] ?
-                                           _ep_dir_out_mps[ep >> 1] : _xfer_bytes[ep];
-
-                    _dcd_invalidate_dcache((void*) trb->bptrl, total_bytes - trb->bufsiz);
-                    dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep >> 1, ep & 1),
-                                        total_bytes - trb->bufsiz,
-                                        XFER_RESULT_SUCCESS, true);
-                } else {
-                    dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep >> 1, ep & 1),
-                                        _get_transfered_bytes(ep),
-                                        XFER_RESULT_SUCCESS, true);
+                    _dcd_invalidate_dcache((void*) trb->bptrl, _get_transfered_bytes(ep));
                 }
+                dcd_event_xfer_complete(TUD_OPT_RHPORT, tu_edpt_addr(ep >> 1, ep & 1),
+                                    _get_transfered_bytes(ep),
+                                    XFER_RESULT_SUCCESS, true);
             }
         } break;
         case DEPEVT_XFERINPROGRESS: {
