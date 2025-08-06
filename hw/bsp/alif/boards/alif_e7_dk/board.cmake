@@ -6,9 +6,9 @@ set(DSP DSP)
 set(MVE FP_FVE)
 set(BYTE_ORDER Little-endian)
 
-if(CORE_M55_HP)
+if(CORE STREQUAL "m55_hp")
   set(MCU_VARIANT M55_HP)
-else()
+elseif(CORE STREQUAL "m55_he")
   set(MCU_VARIANT M55_HE)
 endif()
 

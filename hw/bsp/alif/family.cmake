@@ -3,6 +3,19 @@ set(ALIF_BOARDLIB ${TOP}/hw/mcu/alif/boardlib)
 set(ALIF_COMMON_APP_UTILS ${TOP}/hw/mcu/alif/common-app-utils)
 set(CMSIS_DIR ${TOP}/lib/CMSIS_6)
 
+# CORE variable validation and default
+if(NOT DEFINED CORE)
+  set(CORE m55_hp)
+  message(STATUS "CORE not defined, defaulting to: ${CORE}")
+endif()
+
+# Validate CORE value
+if(NOT CORE STREQUAL "m55_hp" AND NOT CORE STREQUAL "m55_he")
+  message(FATAL_ERROR "The chip is not supported. CORE must be 'm55_hp' or 'm55_he', got: ${CORE}")
+endif()
+
+message(STATUS "Using CORE: ${CORE}")
+
 # include board specific, for zephyr BOARD_ALIAS may be used instead
 include(${CMAKE_CURRENT_LIST_DIR}/boards/${BOARD}/board.cmake OPTIONAL RESULT_VARIABLE board_cmake_included)
 message(STATUS "Trying to include board: ${BOARD}, success: ${board_cmake_included}")
@@ -68,13 +81,11 @@ function(add_board_target BOARD_TARGET)
     )
 
   # Add core definitions to board target
-  if(CORE_M55_HP)
+  if(CORE STREQUAL "m55_hp")
     target_compile_definitions(${BOARD_TARGET} PUBLIC CORE_M55_HP)
     target_compile_definitions(${BOARD_TARGET} PUBLIC M55_HP)
     message(STATUS "Adding CORE_M55_HP to board target ${BOARD_TARGET}")
-  endif()
-  
-  if(CORE_M55_HE)
+  elseif(CORE STREQUAL "m55_he")
     target_compile_definitions(${BOARD_TARGET} PUBLIC CORE_M55_HE)
     target_compile_definitions(${BOARD_TARGET} PUBLIC M55_HE)
     message(STATUS "Adding CORE_M55_HE to board target ${BOARD_TARGET}")
@@ -104,13 +115,13 @@ endfunction()
 
 function(configure_freertos)
 
-  if(CORE_M55_HP)
+  if(CORE STREQUAL "m55_hp")
     add_compile_definitions(
       CORE_M55_HP
       M55_HP
       CDC_STACK_SZIE=CDC_STACK_SIZE
       ) 
-  else()
+  elseif(CORE STREQUAL "m55_he")
     add_compile_definitions(
       CORE_M55_HE
       M55_HE
@@ -146,12 +157,12 @@ endfunction()
 
 function(family_configure_example TARGET RTOS)
 
-  if(CORE_M55_HP)
+  if(CORE STREQUAL "m55_hp")
     add_compile_definitions(
       CORE_M55_HP
       M55_HP
     ) 
-  else()
+  elseif(CORE STREQUAL "m55_he")
     add_compile_definitions(
       CORE_M55_HE
       M55_HE
