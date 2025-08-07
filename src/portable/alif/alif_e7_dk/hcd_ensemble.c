@@ -77,12 +77,15 @@ bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
   return false;
 }
 
+UX_HCD *_hcd;
+
 // Initialize controller to host mode
 bool hcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
   (void) rhport;
   (void) rh_init;
 
   static UX_HCD hcd;
+  _hcd = &hcd;
   uint32_t ret;
 
   // enable 20mhz clock
@@ -109,15 +112,16 @@ bool hcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
 
   ret = _ux_hcd_xhci_initialize(&hcd);
 
+  printf("_ux_hcd_xhci_initialize() returned %d\n", ret);
+
   return ret == UX_SUCCESS;
 }
 
-uint32_t USB_IRQHandler_cnt = 0;
+
 // Interrupt Handler
 void hcd_int_handler(uint8_t rhport, bool in_isr) {
   (void) rhport;
   (void) in_isr;
-  USB_IRQHandler_cnt++;
   _ux_xhci_event_irq_handler(hcd_xhci);
 }
 
