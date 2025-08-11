@@ -38,14 +38,14 @@ enum {
 #define __w volatile uint32_t
 #define __r volatile const uint32_t
 
-// USB Device Controller Base Address  
+// USB Device Controller Base Address
 #define USB_BASE                0x48200000UL
 
 // USB GBL Registers
 volatile struct {
     union {
         _rw gsbuscfg0;                  // Global SoC Bus Configuration Register 0
-        struct {                        
+        struct {
             _rw incrbrstena    : 1;     // Undefined length INCR burst type enable
             _rw incr4brstena   : 1;     // INCR4 burst type enable
             _rw incr8brstena   : 1;     // INCR8 burst type enable
@@ -59,7 +59,7 @@ volatile struct {
             _rw datbigend      : 1;     // Data access is big endian
             __r : 4;                    // Reserved
             _rw deswrreqinfo   : 4;     // Descriptor write request info
-            _rw datwrreqinfo   : 4;     // Data write request info 
+            _rw datwrreqinfo   : 4;     // Data write request info
             _rw desrdreqinfo   : 4;     // Descriptor read request info
             _rw datrdreqinfo   : 4;     // Data read request info
         } gsbuscfg0_b;
@@ -310,7 +310,7 @@ volatile struct {
 
     union {
         _rw gevntsiz0;                  // Global Event Buffer Size Register
-        struct {        
+        struct {
             _rw eventsiz : 16;          // Event buffer size in bytes
             __r : 15;                   // Reserved
             _rw evntintrptmask : 1;     // Event interrupt mask
@@ -448,7 +448,7 @@ volatile struct {
             __r : 7;                    // Reserved
             _rw css : 1;                // Controller Save State (CSS)
             _rw crs : 1;                // Controller Restore State (CRC)
-            _rw l1hibernationen : 1;    // L1 Hibernation Enable    
+            _rw l1hibernationen : 1;    // L1 Hibernation Enable
             _rw keepconnect : 1;        // Keep Connect
             _rw lpm_nyet_thres : 4;     // LPM NYET Threshold
             _rw hirdthres : 5;          // HIRD Threshold
@@ -585,7 +585,7 @@ volatile struct {
             _rw depcmd;                 // Device Physical Endpoint-n Command Registers
             struct {
                 _rw cmdtyp : 4;         // Command type
-                __r : 4;                // Reserved 
+                __r : 4;                // Reserved
                 _rw cmdioc : 1;         // Command Interrupt on Complete
                 __r : 1;                // Reserved
                 _rw cmdact : 1;         // Command Active
@@ -649,7 +649,7 @@ typedef union {
         _rw sts : 4;    // Event-specific status (meaning varies by type)
         _rw par : 16;   // Stream ID, IsoMicroFrameNum, etc.
     } depevt;           // Device Endpoint-Specific Event (DEPEVT)
-    
+
     struct {
         _rw sig  : 8;   // 0x01 = DEVT
         _rw evt  : 5;   // Event Type (see below)
@@ -677,13 +677,13 @@ enum {
 // DEPEVT Event Status Structure
 typedef volatile union {
     _rw val : 4;
-    
+
     struct {                        // XferNotReady Event Status
         _rw stage : 2;              // Requested stage
         __r : 1;                    // Not Used
         _rw active : 1;             // XferActive
     } xfernotready;
-    
+
     struct {                        // XferComplete Event Status
         __r : 1;                    // Not Used
         _rw sp_lst : 1;             // Short packet reception or the lasp packet of iso interval
@@ -699,7 +699,7 @@ typedef volatile union {
     } xferinprogress;
 
     _rw stream : 4;             // Stream Event Status
-    
+
     _rw epcmdcmplt : 4;         // EP Command Complete Event Status
 
 } depevt_sts_t;
@@ -740,9 +740,9 @@ enum {
     CMDTYP_DEPCFG = 1,      // Set Endpoint Configuration 64- or 96-bit param
     CMDTYP_DEPXFERCFG = 2,  // Set Endpoint Transfare Resource Configuration: 32-bit param
     CMDTYP_DEPGETSTATE = 3, // Get Endpoint State: No param
-    CMDTYP_DEPSSTALL = 4,   // Set Stall: No param 
+    CMDTYP_DEPSSTALL = 4,   // Set Stall: No param
     CMDTYP_DEPCSTALL = 5,   // Clear Stall: No param
-    CMDTYP_DEPSTRTXFER = 6, // Start Transfer 64-bit param 
+    CMDTYP_DEPSTRTXFER = 6, // Start Transfer 64-bit param
     CMDTYP_DEPUPDXFER = 7,  // Update Transfare: No param
     CMDTYP_DEPENDXFER = 8,  // End Transfer: No param
     CMDTYP_DEPSTARTCFG = 9  // Start New Configuration: No param
@@ -843,12 +843,26 @@ typedef struct {
     };
 } trb_t;
 
+typedef struct {
+    uint8_t     type;               // Endpoint transfer type
+    uint8_t     interval;           // bInterval value from the descriptor
+    trb_t       *trbs;              // TRB ring buffer
+    trb_t       *trb_tail;          // TRB ring buffer tail
+    uint16_t    resource_idx;       // Transfer resource ID
+    uint16_t    curr_frame;         // Current microframe
+    bool        initialized;        // Endpoint has been initialized already
+    // TODO: see if this flag can be removed
+    bool        isoc_requested;     // Isochronous transfer requested
+    bool        xfer_active;        // Enpdoint is currently transfering
+    bool        stalled;            // Endpoint has been stalled
+} endpoint_t;
+
 // TRB Status
 enum {
     TRB_STATUS_OK = 0x0,            // OK
     TRB_STATUS_MISSEDISOC = 0x1,    // Isochronous interval missed or incomplete
     TRB_STATUS_SETUPPEND = 0x2,     // Setup Pending
-    TRB_STATUS_XFERINPROG = 0x4,    // Transfer In Progress 
+    TRB_STATUS_XFERINPROG = 0x4,    // Transfer In Progress
     TRB_STATUS_ZLPPENDING = 0xF     // Zero-length-packet pending
 } TRB_STATUS;
 
