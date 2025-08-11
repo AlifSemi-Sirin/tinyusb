@@ -295,6 +295,14 @@ typedef struct  {
     int dummy;
 } UX_TIMER;
 
+typedef struct
+{
+    volatile uint32_t  DEPCMDPAR2;     /*!< (@ 0x00000000) Device Physical Endpoint-n Command Parameter 2 Register  */
+    volatile uint32_t  DEPCMDPAR1;     /*!< (@ 0x00000004) Device Physical Endpoint-n Command Parameter 1 Register  */
+    volatile uint32_t  DEPCMDPAR0;     /*!< (@ 0x00000008) Device Physical Endpoint-n Command Parameter 0 Register  */
+    volatile uint32_t  DEPCMD;         /*!< (@ 0x0000000C) Device Physical Endpoint-n Command Register              */
+} USB_USB_ENDPNT_CMD_Type;
+
 typedef struct {
     uint32_t CAPLENGTH;
     uint32_t HCSPARAMS1;
@@ -304,7 +312,76 @@ typedef struct {
     uint32_t DBOFF;
     uint32_t RTSOFF;
     uint32_t HCCPARAMS2;
-} USB_Type;
+    volatile const  uint32_t  RESERVED[12344];
+    volatile uint32_t  GSBUSCFG0;                    /*!< (@ 0x0000C100) Global SoC Bus Configuration Register 0                    */
+    volatile uint32_t  GSBUSCFG1;                    /*!< (@ 0x0000C104) Global SoC Bus Configuration Register 1                    */
+    volatile const  uint32_t  RESERVED1[2];
+    volatile uint32_t  GCTL;                         /*!< (@ 0x0000C110) Global Core Control Register                               */
+    volatile const  uint32_t  RESERVED2;
+    volatile uint32_t  GSTS;                         /*!< (@ 0x0000C118) Global Status Register                                     */
+    volatile uint32_t  GUCTL1;                       /*!< (@ 0x0000C11C) Global User Control Register 1                             */
+    volatile const  uint32_t  GSNPSID;                      /*!< (@ 0x0000C120) Global Controller ID Register                              */
+    volatile const  uint32_t  RESERVED3;
+    volatile uint32_t  GUID;                         /*!< (@ 0x0000C128) Global User ID Register                                    */
+    volatile uint32_t  GUCTL;                        /*!< (@ 0x0000C12C) Global User Control Register                               */
+    volatile const  uint32_t  GBUSERRADDRLO;                /*!< (@ 0x0000C130) Global SoC Bus Error Address Register-Low                  */
+    volatile const  uint32_t  GBUSERRADDRHI;                /*!< (@ 0x0000C134) Global SoC Bus Error Address Register-High                 */
+    volatile const  uint32_t  RESERVED4[2];
+    volatile const  uint32_t  GHWPARAMS0;                   /*!< (@ 0x0000C140) Global Hardware Parameters Register 0                      */
+    volatile const  uint32_t  GHWPARAMS1;                   /*!< (@ 0x0000C144) Global Hardware Parameters Register 1                      */
+    volatile const  uint32_t  GHWPARAMS2;                   /*!< (@ 0x0000C148) Global Hardware Parameters Register 2                      */
+    volatile const  uint32_t  GHWPARAMS3;                   /*!< (@ 0x0000C14C) Global Hardware Parameters Register 3                      */
+    volatile const  uint32_t  GHWPARAMS4;                   /*!< (@ 0x0000C150) Global Hardware Parameters Register 4                      */
+    volatile const  uint32_t  GHWPARAMS5;                   /*!< (@ 0x0000C154) Global Hardware Parameters Register 5                      */
+    volatile const  uint32_t  GHWPARAMS6;                   /*!< (@ 0x0000C158) Global Hardware Parameters Register 6                      */
+    volatile const  uint32_t  GHWPARAMS7;                   /*!< (@ 0x0000C15C) Global Hardware Parameters Register 7                      */
+    volatile const  uint32_t  RESERVED5[8];
+    volatile uint32_t  GPRTBIMAP_HSLO;               /*!< (@ 0x0000C180) Global High-Speed Port to Bus Instance Mapping
+                                                                (Low)                                                      */
+    volatile uint32_t  GPRTBIMAP_HSHI;               /*!< (@ 0x0000C184) Global High-Speed Port to Bus Instance Mapping
+                                                                (High)                                                     */
+    volatile uint32_t  GPRTBIMAP_FSLO;               /*!< (@ 0x0000C188) Global Full-Speed Port to Bus Instance Mapping
+                                                                (Low)                                                      */
+    volatile uint32_t  GPRTBIMAP_FSHI;               /*!< (@ 0x0000C18C) Global Full-Speed Port to Bus Instance Mapping
+                                                                (High)                                                     */
+    volatile const  uint32_t  RESERVED6[3];
+    volatile uint32_t  GUCTL2;                       /*!< (@ 0x0000C19C) Global User Control Register 2                             */
+    volatile const  uint32_t  RESERVED7[24];
+    volatile uint32_t  GUSB2PHYCFG0;                 /*!< (@ 0x0000C200) Global USB2 PHY Configuration Register                     */
+    volatile const  uint32_t  RESERVED8[63];
+    volatile uint32_t  GTXFIFOSIZ[4];                /*!< (@ 0x0000C300) Global Transmit FIFO Size Register n                       */
+    volatile const  uint32_t  RESERVED9[28];
+    volatile uint32_t  GRXFIFOSIZ[4];                /*!< (@ 0x0000C380) Global Receive FIFO Size Register n                        */
+    volatile const  uint32_t  RESERVED10[28];
+    volatile uint32_t  GEVNTADRLO0;                  /*!< (@ 0x0000C400) Global Event Buffer Address (Low)                          */
+    volatile uint32_t  GEVNTADRHI0;                  /*!< (@ 0x0000C404) Global Event Buffer Address (High)                         */
+    volatile uint32_t  GEVNTSIZ0;                    /*!< (@ 0x0000C408) Global Event Buffer Size Register                          */
+    volatile uint32_t  GEVNTCOUNT0;                  /*!< (@ 0x0000C40C) Global Event Buffer Count Register                         */
+    volatile const  uint32_t  RESERVED11[124];
+    volatile const  uint32_t  GHWPARAMS8;                   /*!< (@ 0x0000C600) Global Hardware Parameters Register 8                      */
+    volatile const  uint32_t  RESERVED12[3];
+    volatile uint32_t  GTXFIFOPRIDEV;                /*!< (@ 0x0000C610) Global Device TX FIFO DMA Priority Register                */
+    volatile const  uint32_t  RESERVED13;
+    volatile uint32_t  GTXFIFOPRIHST;                /*!< (@ 0x0000C618) Global Host TX FIFO DMA Priority Register                  */
+    volatile uint32_t  GRXFIFOPRIHST;                /*!< (@ 0x0000C61C) Global Host RX FIFO DMA Priority Register                  */
+    volatile const  uint32_t  RESERVED14[4];
+    volatile uint32_t  GFLADJ;                       /*!< (@ 0x0000C630) Global Frame Length Adjustment Register                    */
+    volatile const  uint32_t  RESERVED15[3];
+    volatile uint32_t  GUSB2RHBCTL0;                 /*!< (@ 0x0000C640) Global USB 2.0 Root Hub Control Register                   */
+    volatile const  uint32_t  RESERVED16[47];
+    volatile uint32_t  DCFG;                         /*!< (@ 0x0000C700) Device Configuration Register                              */
+    volatile uint32_t  DCTL;                         /*!< (@ 0x0000C704) Device Control Register                                    */
+    volatile uint32_t  DEVTEN;                       /*!< (@ 0x0000C708) Device Event Enable Register                               */
+    volatile uint32_t  DSTS;                         /*!< (@ 0x0000C70C) Device Status Register                                     */
+    volatile uint32_t  DGCMDPAR;                     /*!< (@ 0x0000C710) Device Generic Command Parameter Register                  */
+    volatile uint32_t  DGCMD;                        /*!< (@ 0x0000C714) Device Generic Command Register                            */
+    volatile const  uint32_t  RESERVED17[2];
+    volatile uint32_t  DALEPENA;                     /*!< (@ 0x0000C720) Device Active USB Endpoint Enable Register                 */
+    volatile const  uint32_t  RESERVED18[55];
+    volatile USB_USB_ENDPNT_CMD_Type USB_ENDPNT_CMD[8];/*!< (@ 0x0000C800) [0..7]                                                   */
+    volatile const  uint32_t  RESERVED19[96];
+    volatile uint32_t  DEV_IMOD0;                    /*!< (@ 0x0000CA00) Device Interrupt Moderation Register                       */
+} USB_Type;                                     /*!< Size = 51716 (0xca04)  */
 
 #define UX_EVENT_FLAGS_GROUP                                            TX_EVENT_FLAGS_GROUP
 
