@@ -215,7 +215,7 @@ int32_t process_bulk_intr_td(
             if(td->urb->ux_transfer_request_completion_code)
             {
                 td->urb->ux_transfer_request_completion_code = UX_TRANSFER_ERROR;
-                osal_semaphore_post(&td->urb->ux_transfer_request_semaphore, true);
+                osal_semaphore_post(td->urb->ux_transfer_request_semaphore, true);
             }
             return 0;
         default:
@@ -239,7 +239,7 @@ finish_td:
     if(td->urb->ux_transfer_request_completion_code)
     {
         td->urb->ux_transfer_request_completion_code = trb_comp_code == COMP_SUCCESS || trb_comp_code == COMP_SHORT_PACKET? UX_SUCCESS : UX_TRANSFER_ERROR;
-        osal_semaphore_post(&td->urb->ux_transfer_request_semaphore, true);
+        osal_semaphore_post(td->urb->ux_transfer_request_semaphore, true);
     }
     return finish_td(xhci, td, event, ep, status);
 }
