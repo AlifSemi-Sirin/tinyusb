@@ -22,7 +22,7 @@
 #define _UX_HCD_XHCI_API_H_
 
 #include "ux_hcd_xhci.h"
-//#include "system_utils.h"
+#include "system_utils.h"
 
 #ifdef   __cplusplus
 
