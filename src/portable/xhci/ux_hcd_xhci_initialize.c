@@ -293,8 +293,7 @@ uint32_t  _ux_hcd_xhci_initialize(UX_HCD *hcd)
 
     /* Allocate memory for this XHCI HCD instance.  */
 #ifdef USE_STATIC_RAM
-    //char hcd_logbuf[TUSB_ALIF_DEBUG_DEPTH][48] __attribute__((aligned(16)));
-    static UX_HCD_XHCI _xhci;
+    static UX_HCD_XHCI _xhci __attribute__((section("usb_dma_buf")));
     memset(&_xhci, 0, sizeof(_xhci));
     xhci = &_xhci;
 #else

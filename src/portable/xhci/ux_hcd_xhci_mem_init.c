@@ -32,6 +32,7 @@
 mallocs_t _mallocs[32];
 uint8_t _mallocs_cnt = 0;
 
+#define MAX_SEGS 2
 
 static UX_XHCI_SEGMENT * _ux_hcd_xhci_segment_alloc(
         UX_HCD_XHCI *xhci,
@@ -40,8 +41,21 @@ static UX_XHCI_SEGMENT * _ux_hcd_xhci_segment_alloc(
 {
     UX_XHCI_SEGMENT *seg;
     int32_t   i;
+    static int idx = 0;
+    printf("Called %s(%p %u %u) idx=%d\n", __FUNCTION__, xhci, cycle_state, max_packet, idx);
     /* Allocate memery for Segment  */
+#if 0 //def USE_STATIC_RAM
+    if (idx >= MAX_SEGS)
+    {
+        printf("*** Out of segs limit (%u)\n", MAX_SEGS);
+        return NULL;
+    }
+    static UX_XHCI_SEGMENT _seg[MAX_SEGS] __attribute__((section("usb_dma_buf")));
+    memset(&_seg[idx], 0, sizeof(_seg[idx]));
+    xhci = &_seg[idx];
+#else
     seg = _ux_utility_memory_allocate(UX_NO_ALIGN, UX_REGULAR_MEMORY, sizeof(*seg));
+#endif
     if (!seg)
     {
 #ifdef DEBUG
@@ -50,7 +64,14 @@ static UX_XHCI_SEGMENT * _ux_hcd_xhci_segment_alloc(
         return NULL;
     }
     /* Allocate memeory for TRB's in segment  */
+#ifdef USE_STATIC_RAM
+    static uint8_t _trbs[MAX_SEGS][TRB_SEGMENT_SIZE] __attribute__((section("usb_dma_buf"))) __attribute__((aligned(64)));
+    memset(&_trbs[idx], 0, sizeof(_trbs[idx]));
+    UX_XHCI_TRB* t = (UX_XHCI_TRB*)&_trbs[idx];
+    seg->trbs = t;
+#else
     seg->trbs = _ux_utility_memory_allocate(UX_ALIGN_64, UX_REGULAR_MEMORY,  TRB_SEGMENT_SIZE);
+#endif
     if (!seg->trbs)
     {
 #ifdef DEBUG
@@ -82,6 +103,7 @@ static UX_XHCI_SEGMENT * _ux_hcd_xhci_segment_alloc(
     //RTSS_CleanDCache_by_Addr(seg->trbs, sizeof(*seg->trbs));
     seg->dma = LocalToGlobal(seg->trbs);
     seg->next = NULL;
+    idx++;
     return seg;
 }
 
@@ -189,6 +211,7 @@ static void _ux_hcd_xhci_initialize_ring_info(UX_XHCI_RING *ring, int cycle_stat
 UX_XHCI_RING* _ux_hcd_xhci_ring_alloc(UX_HCD_XHCI *xhci, uint32_t num_segs, uint32_t cycle_state,
         UX_XHCI_RING_TYPE type, uint32_t max_packet)
 {
+    printf("Called %s(%p %u %u %u %u)\n", __FUNCTION__, xhci, num_segs, cycle_state, type, max_packet);
     UX_XHCI_RING  *ring;
     int32_t ret;
     /* Allocate the memery for Ring  */
@@ -239,6 +262,7 @@ UX_XHCI_RING *_ux_hcd_xhci_stream_id_to_ring(UX_XHCI_VIRT_DEVICE *dev,uint32_t e
 
 UX_XHCI_CONTAINER_CTX *_ux_hcd_xhci_alloc_container_ctx(UX_HCD_XHCI *xhci, int32_t type)
 {
+    printf("Called %s(%p %u)\n", __FUNCTION__, xhci, type);
     UX_XHCI_CONTAINER_CTX *ctx;
     if ((type != UX_XHCI_CTX_TYPE_DEVICE) && (type != UX_XHCI_CTX_TYPE_INPUT))
         return NULL;
@@ -320,12 +344,20 @@ UX_XHCI_COMMAND *_ux_hcd_xhci_alloc_command_with_ctx_sz(UX_HCD_XHCI *xhci)
 
 uint32_t _ux_hcd_xhci_alloc_erst(UX_HCD_XHCI *xhci, UX_XHCI_RING *evt_ring, UX_XHCI_ERST *erst)
 {
+    printf("Called %s(%p %p %p)\n", __FUNCTION__, xhci, evt_ring, erst);
     size_t size;
     uint32_t val;
     UX_XHCI_SEGMENT *seg;
     UX_XHCI_ERST_ENTRY *entry;
     size = sizeof(UX_XHCI_ERST_ENTRY) * evt_ring->num_segs;
+    printf("size=%u, evt_ring->num_segs=%u\n", size, evt_ring->num_segs);
+#ifdef USE_STATIC_RAM
+    static UX_XHCI_ERST_ENTRY _entries[2]  __attribute__((section("usb_dma_buf")));
+    memset(&_entries, 0, sizeof(_entries));
+    erst->entries = &_entries[0];
+#else
     erst->entries = _ux_utility_memory_allocate(UX_NO_ALIGN, UX_REGULAR_MEMORY, 2 * size);
+#endif
     if (!erst->entries)
         return 1;
     memset (erst->entries, 0, 2 * size);
@@ -692,7 +724,7 @@ uint32_t _ux_hcd_xhci_mem_init(UX_HCD_XHCI *xhci)
      * "physically contiguous and 64-byte (cache line) aligned".
      */
 #ifdef USE_STATIC_RAM
-    static UX_XHCI_DEVICE_CONTEXT_ARRAY _dcbaa  __attribute__((aligned(128)));
+    static UX_XHCI_DEVICE_CONTEXT_ARRAY _dcbaa __attribute__((section("usb_dma_buf"))) __attribute__((aligned(128)));
     memset(&_dcbaa, 0, sizeof(_dcbaa));
     xhci->dcbaa = &_dcbaa;
 #else
