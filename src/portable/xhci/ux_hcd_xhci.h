@@ -469,7 +469,10 @@ static inline void *_ux_utility_memory_allocate(
     _mallocs[_mallocs_cnt].ptr = ptr;
     _mallocs_cnt++;
 
-   return ptr;
+    printf("Called %s(%u %u %u) palloc %p return %p\n", __FUNCTION__,
+           memory_alignment, memory_cache_flag, memory_size_requested, palloc, ptr);
+
+    return ptr;
 }
 
 static void _ux_system_error_handler(unsigned int system_level, unsigned int system_context, unsigned int error_code)
@@ -1437,45 +1440,8 @@ typedef enum UX_XHCI_RING_TYPE_ENUM
 
 typedef struct UX_XHCI_OP_REGS_STRUCT
 {
-   union {
-       volatile uint32_t            USBCMD;                 /* ! USB COMMAND Register (USBCMD) */
-       struct {
-           volatile uint32_t        R_S     : 1;
-           volatile uint32_t        HCRST   : 1;
-           volatile uint32_t        INTE    : 1;
-           volatile uint32_t        HSEE    : 1;
-           volatile const uint32_t : 3;
-           volatile uint32_t        LHCRST  : 1;
-           volatile uint32_t        CSS     : 1;
-           volatile uint32_t        CRS     : 1;
-           volatile uint32_t        EWE     : 1;
-           volatile uint32_t        EU3S    : 1;
-           volatile const uint32_t : 1;
-           volatile uint32_t        CME     : 1;
-           volatile uint32_t        ETE     : 1;
-           volatile uint32_t        TSC_EN  : 1;
-           volatile uint32_t        VTIOE   : 1;
-            volatile const uint32_t : 15;
-       } USBCMD_b;
-   };
-   union {
-    volatile uint32_t            USBSTS;                  /* ! USB STATUS Register(USBSTS)   */
-    struct {
-           volatile const uint32_t  HCH : 1;
-           volatile const uint32_t : 1;
-           volatile uint32_t        HSE : 1;
-           volatile uint32_t        EINT: 1;
-           volatile uint32_t        PCD : 1;
-           volatile const uint32_t : 3;
-           volatile const uint32_t  SSS : 1;
-           volatile const uint32_t  RSS : 1;
-           volatile uint32_t        SRE : 1;
-           volatile const uint32_t  CNR : 1;
-           volatile const uint32_t  HCE : 1;
-           volatile const uint32_t : 19;
-      } USBSTS_b;
-   };
-
+   volatile uint32_t            USBCMD;                 /* ! USB COMMAND Register (USBCMD) */
+   volatile uint32_t            USBSTS;                  /* ! USB STATUS Register(USBSTS)   */
    volatile const uint32_t      PAGESIZE;               /* ! USB PAGE SIZE register (PAGESIZE)  */
    volatile const uint32_t      RESERVED1;
    volatile const uint32_t      RESERVED2;
