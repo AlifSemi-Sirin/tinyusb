@@ -45,6 +45,12 @@ char logbuf[48];
 // Defines --------------------------------------------------------
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR
 
+// USB Registers
+#define EXPMST_USB_GPIO0            (EXPMST_BASE + 0xA0)
+#define EXPMST_USB_STAT0            (EXPMST_BASE + 0xA4)
+#define EXPMST_USB_CTRL1            (EXPMST_BASE + 0xA8)
+#define EXPMST_USB_CTRL2            (EXPMST_BASE + 0xAC)
+
 // Enable USB_CLK and 10M_CLK (CLK_ENA Register)
 #define CLK_ENA_CLK20M              BIT(22)
 

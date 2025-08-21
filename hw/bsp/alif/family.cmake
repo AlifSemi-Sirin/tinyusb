@@ -3,27 +3,15 @@ set(ALIF_BOARDLIB ${TOP}/hw/mcu/alif/boardlib)
 set(ALIF_COMMON_APP_UTILS ${TOP}/hw/mcu/alif/common-app-utils)
 set(CMSIS_DIR ${TOP}/lib/CMSIS_6)
 
-# CORE variable validation and default
-if(NOT DEFINED CORE)
-  set(CORE m55_hp)
-  message(STATUS "CORE not defined, defaulting to: ${CORE}")
-endif()
-
-# Validate CORE value
-if(NOT CORE STREQUAL "m55_hp" AND NOT CORE STREQUAL "m55_he")
-  message(FATAL_ERROR "The chip is not supported. CORE must be 'm55_hp' or 'm55_he', got: ${CORE}")
-endif()
-
-message(STATUS "Using CORE: ${CORE}")
-
-# include board specific, for zephyr BOARD_ALIAS may be used instead
+# Include board specific
 include(${CMAKE_CURRENT_LIST_DIR}/boards/${BOARD}/board.cmake OPTIONAL RESULT_VARIABLE board_cmake_included)
-message(STATUS "Trying to include board: ${BOARD}, success: ${board_cmake_included}")
+message(STATUS "Trying to include board: ${BOARD}${BOARD_QUALIFIERS}, success: ${board_cmake_included}")
 
-if (NOT board_cmake_included)
-  include(${CMAKE_CURRENT_LIST_DIR}/boards/${BOARD_ALIAS}/board.cmake)
-  message(STATUS "Fallback to BOARD_ALIAS: ${BOARD_ALIAS}")
-endif ()
+# Validate MCU_VARIANT value
+message(STATUS "Using MCU_VARIANT: ${MCU_VARIANT}")
+if(NOT MCU_VARIANT STREQUAL "M55_HP" AND NOT MCU_VARIANT STREQUAL "M55_HE")
+  message(FATAL_ERROR "The chip is not supported. MCU_VARIANT must be 'M55_HP' or 'M55_HE', got: ${MCU_VARIANT}")
+endif()
 
 set(CMAKE_TOOLCHAIN_FILE ${TOP}/examples/build_system/cmake/toolchain/arm_${TOOLCHAIN}.cmake)
 message(STATUS "Using toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
@@ -81,11 +69,11 @@ function(add_board_target BOARD_TARGET)
     )
 
   # Add core definitions to board target
-  if(CORE STREQUAL "m55_hp")
+  if(MCU_VARIANT STREQUAL "M55_HP")
     target_compile_definitions(${BOARD_TARGET} PUBLIC CORE_M55_HP)
     target_compile_definitions(${BOARD_TARGET} PUBLIC M55_HP)
     message(STATUS "Adding CORE_M55_HP to board target ${BOARD_TARGET}")
-  elseif(CORE STREQUAL "m55_he")
+  elseif(MCU_VARIANT STREQUAL "M55_HE")
     target_compile_definitions(${BOARD_TARGET} PUBLIC CORE_M55_HE)
     target_compile_definitions(${BOARD_TARGET} PUBLIC M55_HE)
     message(STATUS "Adding CORE_M55_HE to board target ${BOARD_TARGET}")
@@ -115,13 +103,13 @@ endfunction()
 
 function(configure_freertos)
 
-  if(CORE STREQUAL "m55_hp")
+  if(MCU_VARIANT STREQUAL "M55_HP")
     add_compile_definitions(
       CORE_M55_HP
       M55_HP
       CDC_STACK_SZIE=CDC_STACK_SIZE
       ) 
-  elseif(CORE STREQUAL "m55_he")
+  elseif(MCU_VARIANT STREQUAL "M55_HE")
     add_compile_definitions(
       CORE_M55_HE
       M55_HE
@@ -157,12 +145,12 @@ endfunction()
 
 function(family_configure_example TARGET RTOS)
 
-  if(CORE STREQUAL "m55_hp")
+  if(MCU_VARIANT STREQUAL "M55_HP")
     add_compile_definitions(
       CORE_M55_HP
       M55_HP
     ) 
-  elseif(CORE STREQUAL "m55_he")
+  elseif(MCU_VARIANT STREQUAL "M55_HE")
     add_compile_definitions(
       CORE_M55_HE
       M55_HE
@@ -196,7 +184,7 @@ function(family_configure_example TARGET RTOS)
 
   family_configure_common(${TARGET} ${RTOS})
 
-  message(STATUS "Configuring family example for TARGET: ${TARGET}, RTOS: ${RTOS}, BOARD: ${BOARD}")
+  message(STATUS "Configuring family example for TARGET: ${TARGET}, RTOS: ${RTOS}, BOARD: ${BOARD}, BOARD_QUALIFIERS: ${BOARD_QUALIFIERS}")
 
   target_sources(${TARGET} PRIVATE
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/family.c
@@ -209,9 +197,8 @@ function(family_configure_example TARGET RTOS)
     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD}
     )
 
-  if (RTOS STREQUAL zephyr AND DEFINED BOARD_ALIAS)
-    target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD_ALIAS})
-    message(STATUS "Adding BOARD_ALIAS include dir: ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/boards/${BOARD_ALIAS}")
+  if (RTOS STREQUAL zephyr)
+    zephyr_linker_sources(SECTIONS ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/usb_buf_section.ld)
   endif ()
 
   family_add_tinyusb(${TARGET} OPT_MCU_NONE)

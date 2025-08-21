@@ -6,11 +6,8 @@ set(DSP DSP)
 set(MVE FP_FVE)
 set(BYTE_ORDER Little-endian)
 
-if(CORE STREQUAL "m55_hp")
-  set(MCU_VARIANT M55_HP)
-elseif(CORE STREQUAL "m55_he")
-  set(MCU_VARIANT M55_HE)
-endif()
+# Include qualifiers specific
+include(${CMAKE_CURRENT_LIST_DIR}/${BOARD_QUALIFIERS}/board.cmake)
 
 function(update_board TARGET)
 endfunction()
