@@ -82,6 +82,8 @@ bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
   (void) cfg_id;
   (void) cfg_param;
 
+  printf("Called %s(%u %u %p)\n", __FUNCTION__, rhport, cfg_id, cfg_param);
+
   return false;
 }
 
@@ -137,22 +139,26 @@ bool hcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
 void hcd_int_handler(uint8_t rhport, bool in_isr) {
   (void) rhport;
   (void) in_isr;
+  printf("Called %s(%u %u)\n", __FUNCTION__, rhport, in_isr);
   _ux_xhci_event_irq_handler(hcd_xhci);
 }
 
 // Enable USB interrupt
 void hcd_int_enable (uint8_t rhport) {
   (void) rhport;
+//    printf("Called %s(%u)\n", __FUNCTION__, rhport);
 }
 
 // Disable USB interrupt
 void hcd_int_disable(uint8_t rhport) {
   (void) rhport;
+//  printf("Called %s(%u)\n", __FUNCTION__, rhport);
 }
 
 // Get frame number (1ms)
 uint32_t hcd_frame_number(uint8_t rhport) {
   (void) rhport;
+  printf("Called %s(%u)\n", __FUNCTION__, rhport);
   return 0;
 }
 
@@ -163,6 +169,7 @@ uint32_t hcd_frame_number(uint8_t rhport) {
 // Get the current connect status of roothub port
 bool hcd_port_connect_status(uint8_t rhport) {
   (void) rhport;
+  printf("Called %s(%u)\n", __FUNCTION__, rhport);
   return false;
 }
 
@@ -170,6 +177,7 @@ bool hcd_port_connect_status(uint8_t rhport) {
 // Some port would require hcd_port_reset_end() to be invoked after 10ms to complete the reset sequence.
 void hcd_port_reset(uint8_t rhport) {
   (void) rhport;
+  printf("Called %s(%u)\n", __FUNCTION__, rhport);
 }
 
 // Complete bus reset sequence, may be required by some controllers
@@ -180,6 +188,7 @@ void hcd_port_reset_end(uint8_t rhport) {
 // Get port link speed
 tusb_speed_t hcd_port_speed_get(uint8_t rhport) {
   (void) rhport;
+  printf("Called %s(%u)\n", __FUNCTION__, rhport);
   return TUSB_SPEED_FULL;
 }
 
@@ -187,6 +196,7 @@ tusb_speed_t hcd_port_speed_get(uint8_t rhport) {
 void hcd_device_close(uint8_t rhport, uint8_t dev_addr) {
   (void) rhport;
   (void) dev_addr;
+  printf("Called %s(%u %u)\n", __FUNCTION__, rhport, dev_addr);
 }
 
 //--------------------------------------------------------------------+
@@ -198,6 +208,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   (void) rhport;
   (void) dev_addr;
   (void) ep_desc;
+  printf("Called %s(%u %u %p)\n", __FUNCTION__, rhport, dev_addr, ep_desc);
 
   // NOTE: ep_desc is allocated on the stack when called from usbh_edpt_control_open()
   // You need to copy the data into a local variable who maintains the state of the endpoint and transfer.
@@ -207,7 +218,10 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 }
 
 bool hcd_edpt_close(uint8_t rhport, uint8_t daddr, uint8_t ep_addr) {
-  (void) rhport; (void) daddr; (void) ep_addr;
+  (void) rhport;
+  (void) daddr;
+  (void) ep_addr;
+  printf("Called %s(%u %u %u)\n", __FUNCTION__, rhport, daddr, ep_addr);
   return false; // TODO not implemented yet
 }
 
@@ -219,6 +233,8 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   (void) buffer;
   (void) buflen;
 
+  printf("Called %s(%u %u %u %p %u)\n", __FUNCTION__, rhport, dev_addr, ep_addr, buffer, buflen);
+
   return false;
 }
 
@@ -229,6 +245,7 @@ bool hcd_edpt_abort_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr) {
   (void) dev_addr;
   (void) ep_addr;
 
+  printf("Called %s(%u %u %u)\n", __FUNCTION__, rhport, dev_addr, ep_addr);
   return false;
 }
 
@@ -238,6 +255,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   (void) dev_addr;
   (void) setup_packet;
 
+  printf("Called %s(%u %u %p)\n", __FUNCTION__, rhport, dev_addr, setup_packet);
   return false;
 }
 
@@ -247,6 +265,7 @@ bool hcd_edpt_clear_stall(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr) {
   (void) dev_addr;
   (void) ep_addr;
 
+  printf("Called %s(%u %u %u)\n", __FUNCTION__, rhport, dev_addr, ep_addr);
   return false;
 }
 

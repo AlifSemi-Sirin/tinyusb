@@ -187,7 +187,6 @@ static void _ux_hcd_xhci_initialize_ring_info(UX_XHCI_RING *ring, int cycle_stat
 UX_XHCI_RING* _ux_hcd_xhci_ring_alloc(UX_HCD_XHCI *xhci, uint32_t num_segs, uint32_t cycle_state,
         UX_XHCI_RING_TYPE type, uint32_t max_packet)
 {
-    printf("Called %s(%p %u %u %u %u)\n", __FUNCTION__, xhci, num_segs, cycle_state, type, max_packet);
     UX_XHCI_RING  *ring;
     int32_t ret;
     /* Allocate the memery for Ring  */
@@ -238,7 +237,6 @@ UX_XHCI_RING *_ux_hcd_xhci_stream_id_to_ring(UX_XHCI_VIRT_DEVICE *dev,uint32_t e
 
 UX_XHCI_CONTAINER_CTX *_ux_hcd_xhci_alloc_container_ctx(UX_HCD_XHCI *xhci, int32_t type)
 {
-    printf("Called %s(%p %u)\n", __FUNCTION__, xhci, type);
     UX_XHCI_CONTAINER_CTX *ctx;
     if ((type != UX_XHCI_CTX_TYPE_DEVICE) && (type != UX_XHCI_CTX_TYPE_INPUT))
         return NULL;

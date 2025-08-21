@@ -447,64 +447,77 @@ UX_MEMORY_BLOCK  *_ux_utility_memory_free_block_best_get(unsigned long memory_ca
 
 static inline int ux_endpoint_xfer_bulk(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
+    printf("Called %s(%p)\n", __FUNCTION__, epd);
     return 1;
 }
 
 static inline int ux_endpoint_xfer_isoc(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
+    printf("Called %s(%p)\n", __FUNCTION__, epd);
     return 0;
 }
 
 static inline int ux_endpoint_xfer_int(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
+    printf("Called %s(%p)\n", __FUNCTION__, epd);
     return 0;
 }
 
 static inline int ux_endpoint_xfer_control(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
+    printf("Called %s(%p)\n", __FUNCTION__, epd);
     return 0;
 }
 
 static inline int ux_endpoint_maxp(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
+    printf("Called %s(%p)\n", __FUNCTION__, epd);
     return 512;
 }
 
 static inline int ux_endpoint_type(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
+    printf("Called %s(%p)\n", __FUNCTION__, epd);
     return 0;
 }
 
 static void _ux_system_error_handler(unsigned int system_level, unsigned int system_context, unsigned int error_code)
 {
+    printf("Called %s(%u %u %u)\n", __FUNCTION__, system_level, system_context, error_code);
 }
 
 static inline unsigned int _ux_utility_timer_create(UX_TIMER *timer, char *timer_name, void (*expiration_function) (void*),
         void *expiration_input, unsigned long initial_ticks, unsigned long reschedule_ticks,
         unsigned int activation_flag)
 {
+    printf("Called %s(%p '%s' %p %p %lu %lu %u)\n", __FUNCTION__, timer,
+           timer_name, expiration_function, expiration_input, initial_ticks, reschedule_ticks, activation_flag);
     return 0;
 }
 
 static inline unsigned int tx_timer_activate(UX_TIMER *timer)
 {
+    printf("Called %s(%p)\n", __FUNCTION__, timer);
     return 0;
 }
 
 static inline unsigned int _ux_utility_event_flags_create(UX_EVENT_FLAGS_GROUP *group_ptr, char *name)
 {
+    printf("Called %s(%p '%s')\n", __FUNCTION__, group_ptr, name);
     return 0;
 }
 
 static inline unsigned int _ux_utility_event_flags_set(UX_EVENT_FLAGS_GROUP*group_ptr, unsigned long flags_to_set,
         unsigned int set_option)
 {
+    printf("Called %s(%p %lu %u)\n", __FUNCTION__, group_ptr, flags_to_set, set_option);
     return 0;
 }
 
 static inline unsigned int _ux_utility_event_flags_get(UX_EVENT_FLAGS_GROUP*group_ptr, unsigned long requested_flags,
         unsigned int get_option, unsigned long *actual_flags_ptr, unsigned long wait_option)
 {
+    printf("Called %s(%p %lu %u %p %lu)\n", __FUNCTION__, group_ptr, requested_flags, get_option, actual_flags_ptr, wait_option);
     return 0;
 }
 
