@@ -1395,7 +1395,7 @@ typedef struct UX_HCD_XHCI_STRUCT
    int32_t          page_size;
    /* Valid values are 12 to 20, inclusive */
    int32_t         page_shift;
-   UX_MUTEX        ux_hcd_xhci_periodic_mutex;
+   OSAL_MUTEX_DEF(ux_hcd_xhci_periodic_mutex);
    UX_TIMER       port_status_timer;
    /* data structures */
    UX_XHCI_DEVICE_CONTEXT_ARRAY    *dcbaa;

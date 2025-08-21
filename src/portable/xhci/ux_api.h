@@ -1,6 +1,8 @@
 #ifndef UX_API_H
 #define UX_API_H
 
+#include "host/hcd.h"
+
 #if defined(CORE_M55_HE)
 #include "M55_HE.h"
 #elif defined(CORE_M55_HP)
@@ -13,8 +15,8 @@
 
 #ifdef   __cplusplus
 
-    /* Yes, C++ compiler is present.  Use standard C.  */
-    extern   "C" {
+/* Yes, C++ compiler is present.  Use standard C.  */
+extern   "C" {
 
 #endif
 
@@ -59,10 +61,14 @@
 #define UX_SUCCESS                                                      0
 #define UX_ERROR                                                        0xff
 #define UX_MEMORY_INSUFFICIENT                                          0x12
+#define UX_MUTEX_ERROR                                                  0x17
+#define UX_MEMORY_CORRUPTED                                             0x19
 #define UX_TRANSFER_ERROR                                               0x23
 #define UX_FUNCTION_NOT_SUPPORTED                                       0x54
 #define UX_CONTROLLER_UNKNOWN                                           0x55
 
+#define UX_MEMORY_UNUSED                                                0x00000000u
+#define UX_MEMORY_USED                                                  0x80000000u
 #define UX_REGULAR_MEMORY                                               0
 #define UX_CACHE_SAFE_MEMORY                                            1
 
@@ -215,6 +221,12 @@
 
 #define UX_WAIT_FOREVER TX_WAIT_FOREVER
 
+#define UX_NULL TX_NULL
+
+#define ALIGN_TYPE unsigned long
+
+#define _ux_utility_memory_set(...) memset(__VA_ARGS__)
+
 typedef tusb_desc_endpoint_t UX_ENDPOINT_DESCRIPTOR;
 
 typedef struct  {
@@ -257,10 +269,6 @@ typedef struct  {
     void *ux_hcd_controller_hardware;
     void *ux_hcd_io;
 } UX_HCD;
-
-typedef struct  {
-    int dummy;
-} UX_MUTEX;
 
 typedef struct  {
     int dummy;
@@ -354,11 +362,87 @@ typedef struct {
     volatile uint32_t  DEV_IMOD0;                    /*!< (@ 0x0000CA00) Device Interrupt Moderation Register                       */
 } USB_Type;                                     /*!< Size = 51716 (0xca04)  */
 
+
+/* Define USBX Memory Management structure.  */
+
+typedef struct UX_MEMORY_BLOCK_STRUCT
+{
+
+    unsigned long   ux_memory_block_size;
+    unsigned long   ux_memory_block_status;
+    struct  UX_MEMORY_BLOCK_STRUCT
+                    *ux_memory_block_next;
+    struct  UX_MEMORY_BLOCK_STRUCT
+                    *ux_memory_block_previous;
+} UX_MEMORY_BLOCK;
+
+
+typedef struct UX_SYSTEM_STRUCT
+{
+
+    UX_MEMORY_BLOCK *ux_system_regular_memory_pool_start;
+    unsigned long   ux_system_regular_memory_pool_size;
+    unsigned long   ux_system_regular_memory_pool_free;
+    UX_MEMORY_BLOCK *ux_system_cache_safe_memory_pool_start;
+    unsigned long   ux_system_cache_safe_memory_pool_size;
+    unsigned long   ux_system_cache_safe_memory_pool_free;
+#ifdef UX_ENABLE_MEMORY_STATISTICS
+    unsigned char   *ux_system_regular_memory_pool_base;
+    ALIGN_TYPE      ux_system_regular_memory_pool_max_start_offset;
+    ALIGN_TYPE      ux_system_regular_memory_pool_min_free;
+    unsigned char   *ux_system_cache_safe_memory_pool_base;
+    ALIGN_TYPE      ux_system_cache_safe_memory_pool_max_start_offset;
+    ALIGN_TYPE      ux_system_cache_safe_memory_pool_min_free;
+    unsigned long   ux_system_regular_memory_pool_alloc_count;
+    unsigned long   ux_system_regular_memory_pool_alloc_total;
+    unsigned long   ux_system_regular_memory_pool_alloc_max_count;
+    unsigned long   ux_system_regular_memory_pool_alloc_max_total;
+    unsigned long   ux_system_cache_safe_memory_pool_alloc_count;
+    unsigned long   ux_system_cache_safe_memory_pool_alloc_total;
+    unsigned long   ux_system_cache_safe_memory_pool_alloc_max_count;
+    unsigned long   ux_system_cache_safe_memory_pool_alloc_max_total;
+#endif
+
+    unsigned int            ux_system_thread_lowest_priority;
+    OSAL_MUTEX_DEF(ux_system_mutex);
+
+#ifndef UX_DISABLE_ERROR_HANDLER
+    unsigned int            ux_system_last_error;
+    unsigned int            ux_system_error_count;
+    void            (*ux_system_error_callback_function) (unsigned int system_level, unsigned int system_context, unsigned int error_code);
+#endif
+
+#ifdef UX_ENABLE_DEBUG_LOG
+    unsigned long   ux_system_debug_code;
+    unsigned long   ux_system_debug_count;
+    unsigned char   *ux_system_debug_log_buffer;
+    unsigned char   *ux_system_debug_log_head;
+    unsigned char   *ux_system_debug_log_tail;
+    unsigned long   ux_system_debug_log_size;
+    void            (*ux_system_debug_callback_function) (unsigned char *debug_message, unsigned long debug_value);
+#endif
+} UX_SYSTEM;
+
+extern UX_SYSTEM *_ux_system;
+
+#define ux_system_initialize                                    _ux_system_initialize
+#define ux_system_uninitialize                                  _ux_system_uninitialize
+
 #define UX_EVENT_FLAGS_GROUP                                            TX_EVENT_FLAGS_GROUP
 
 typedef struct  {
     int dummy;
 } TX_EVENT_FLAGS_GROUP;
+
+unsigned int  _ux_system_initialize(void *regular_memory_pool_start, unsigned long regular_memory_size,
+                                    void *cache_safe_memory_pool_start, unsigned long cache_safe_memory_size);
+
+void            *_ux_utility_memory_allocate(unsigned long memory_alignment, unsigned long memory_cache_flag, unsigned long memory_size_requested);
+//unsigned int    _ux_utility_memory_compare(void *memory_source, void *memory_destination, unsigned long length);
+//void             _ux_utility_memory_copy(void *memory_destination, void *memory_source, unsigned long length);
+void             _ux_utility_memory_free(void *memory);
+UX_MEMORY_BLOCK  *_ux_utility_memory_free_block_best_get(unsigned long memory_cache_flag,
+                                                         unsigned long memory_size_requested);
 
 
 static inline int ux_endpoint_xfer_bulk(const UX_ENDPOINT_DESCRIPTOR *epd)
@@ -389,61 +473,6 @@ static inline int ux_endpoint_maxp(const UX_ENDPOINT_DESCRIPTOR *epd)
 static inline int ux_endpoint_type(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
     return 0;
-}
-
-static inline void _ux_utility_memory_free(void *ptr)
-{
-    if (ptr != NULL)
-    {
-        void *pptr = ptr - sizeof(void*);
-        unsigned long palloc = *((unsigned long*)pptr);
-        free((void*)palloc);
-    }
-}
-
-typedef struct {
-    unsigned long memory_alignment;
-    unsigned long memory_cache_flag;
-    unsigned long memory_size_requested;
-    void *ptr;
-} mallocs_t;
-
-extern mallocs_t _mallocs[32];
-extern uint8_t _mallocs_cnt;
-
-static inline void *_ux_utility_memory_allocate(
-    unsigned long memory_alignment,
-    unsigned long memory_cache_flag,
-    unsigned long memory_size_requested)
-{
-    unsigned long malloc_size = memory_size_requested + sizeof(void*) + memory_alignment;
-
-    void *palloc = malloc(malloc_size);
-    void *ptr = NULL;
-    if (palloc != NULL)
-    {
-        memset(palloc, 0, malloc_size);
-        ptr = (void*)(((unsigned long)palloc + sizeof(void*) + memory_alignment) & ~memory_alignment);
-        void *pptr = ptr - sizeof(void*);
-        unsigned long *paddr = (unsigned long*)pptr;
-        *paddr = (unsigned long)palloc;
-    }
-
-    if (ptr && memory_alignment)
-    {
-        TU_ASSERT((((unsigned long)ptr) & memory_alignment) == 0);
-    }
-
-    _mallocs[_mallocs_cnt].memory_alignment = memory_alignment;
-    _mallocs[_mallocs_cnt].memory_cache_flag = memory_cache_flag;
-    _mallocs[_mallocs_cnt].memory_size_requested = memory_size_requested;
-    _mallocs[_mallocs_cnt].ptr = ptr;
-    _mallocs_cnt++;
-
-    printf("Called %s(%u %u %u) palloc %p return %p\n", __FUNCTION__,
-           memory_alignment, memory_cache_flag, memory_size_requested, palloc, ptr);
-
-    return ptr;
 }
 
 static void _ux_system_error_handler(unsigned int system_level, unsigned int system_context, unsigned int error_code)

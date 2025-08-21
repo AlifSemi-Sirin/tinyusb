@@ -123,7 +123,6 @@ unsigned int  _ux_system_initialize(void *regular_memory_pool_start, unsigned lo
 UX_MEMORY_BLOCK     *memory_block;
 ALIGN_TYPE          int_memory_pool_start;
 void                *regular_memory_pool_end;
-unsigned int                status;
 unsigned long               memory_pool_offset;
 
     /* Reset memory block */
@@ -255,10 +254,11 @@ unsigned long               memory_pool_offset;
 
 #endif
 
+#if OSAL_MUTEX_REQUIRED
     /* Create the Mutex object used by USBX to control critical sections.  */
-    status =  _ux_utility_mutex_create(&_ux_system -> ux_system_mutex, "ux_system_mutex");
-    if(status != UX_SUCCESS)
-        return(UX_MUTEX_ERROR);
+    osal_mutex_t system_mutex = osal_mutex_create(&_ux_system -> ux_system_mutex);
+    TU_ASSERT(system_mutex != NULL, UX_MUTEX_ERROR);
+#endif
 
     return(UX_SUCCESS);
 }

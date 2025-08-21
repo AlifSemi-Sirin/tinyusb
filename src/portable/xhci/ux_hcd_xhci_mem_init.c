@@ -29,9 +29,6 @@
 #include "ux_hcd_xhci_api.h"
 //#include "ux_host_stack.h"
 
-mallocs_t _mallocs[32];
-uint8_t _mallocs_cnt = 0;
-
 #define MAX_SEGS 2
 
 static UX_XHCI_SEGMENT * _ux_hcd_xhci_segment_alloc(

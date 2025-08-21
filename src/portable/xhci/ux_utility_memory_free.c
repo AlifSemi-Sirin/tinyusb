@@ -79,7 +79,7 @@ unsigned char       *memory_address;
     //printf("Free: %p\n",memory);
 
     /* Get the mutex as this is a critical section.  */
-    _ux_utility_mutex_on(&_ux_system -> ux_system_mutex);
+    osal_mutex_lock(&_ux_system -> ux_system_mutex, OSAL_TIMEOUT_WAIT_FOREVER);
 
     /* The memory block for this memory pointer is located right before the
        memory.  */
@@ -94,7 +94,7 @@ unsigned char       *memory_address;
     {
 
         /* Not valid. Release the protection.  */
-        _ux_utility_mutex_off(&_ux_system -> ux_system_mutex);
+        osal_mutex_unlock(&_ux_system -> ux_system_mutex);
 
         /* Error trap. */
         _ux_system_error_handler(UX_SYSTEM_LEVEL_THREAD, UX_SYSTEM_CONTEXT_UTILITY, UX_MEMORY_CORRUPTED);
@@ -194,7 +194,7 @@ unsigned char       *memory_address;
     }
 
     /* Release the protection.  */
-    _ux_utility_mutex_off(&_ux_system -> ux_system_mutex);
+    osal_mutex_unlock(&_ux_system -> ux_system_mutex);
 
     /* Return to caller.  */
     return;

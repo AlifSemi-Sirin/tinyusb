@@ -68,6 +68,14 @@ volatile struct {
 // Controller API
 //--------------------------------------------------------------------+
 
+#define ONE_KB                            1024
+#define UX_DEMO_STACK_SIZE                (4*ONE_KB)
+#define UX_DEMO_NS_SIZE                   (128 * ONE_KB)
+#define UX_REGULAR_MEMORY_SIZE            (79 * ONE_KB)
+#define UX_CACHE_SAFE_MEMORY_SIZE         (20 * ONE_KB)
+
+static uint8_t dma_buf[UX_DEMO_NS_SIZE]__attribute__((section("usb_dma_buf")));
+
 // optional hcd configuration, called by tuh_configure()
 bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
   (void) rhport;
@@ -87,6 +95,13 @@ bool hcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
   static UX_HCD hcd;
   _hcd = &hcd;
   uint32_t ret;
+
+  ret = ux_system_initialize(dma_buf, UX_REGULAR_MEMORY_SIZE, dma_buf + UX_REGULAR_MEMORY_SIZE, UX_CACHE_SAFE_MEMORY_SIZE);
+  /* Check for error.  */
+  if (ret != 0)
+  {
+      return false;
+  }
 
   // enable 20mhz clock
   enable_cgu_clk20m();
