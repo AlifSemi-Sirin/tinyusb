@@ -39,20 +39,9 @@ void board_init(void) {
     if (device_is_ready(led.port)) {
         gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
     }
-    if (device_is_ready(button.port)) {
+    
+    if (gpio_is_ready_dt(&button)) {
         gpio_pin_configure_dt(&button, GPIO_INPUT);
-
-        // FIXME: pull-up resistor only for pin 4 on
-        // the LPGPIO port (base addr: 0x42002000,  port ID: 120)
-        if (button.pin == 4 && strcmp(button.port->name, "gpio@42002000") == 0) {
-            pinctrl_soc_pin_t pin_cfg = 0;
-            pin_cfg |= PAD_CONF_REN(1); // receiver enable
-            pin_cfg |= PAD_CONF_DSC(1); // pull-up resistor enable
-            pin_cfg |= (120) << 3;      // port ID [9:3] (120 - LPGPIO)
-            pin_cfg |= (4) << 0;        // pin number [2:0] (4 - LPGPIO pin)
-
-            pinctrl_configure_pins(&pin_cfg, 1, NULL);
-        }
     }
 #endif
 }
@@ -87,7 +76,8 @@ uint32_t board_button_read(void) {
     if (!device_is_ready(button.port)) {
         return 0;
     }
-    int val = gpio_pin_get(button.port, button.pin);
+
+    int val = gpio_pin_get_dt(&button);
 
     return val == 0;    // Pin pulled low when pressed
 #endif  
