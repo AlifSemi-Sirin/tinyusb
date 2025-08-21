@@ -11,7 +11,7 @@
 #error "Unsupported core!"
 #endif
 
-#define USE_STATIC_RAM
+//#define USE_STATIC_RAM
 
 #ifdef   __cplusplus
 

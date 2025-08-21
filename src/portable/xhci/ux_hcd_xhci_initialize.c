@@ -292,13 +292,7 @@ uint32_t  _ux_hcd_xhci_initialize(UX_HCD *hcd)
 
 
     /* Allocate memory for this XHCI HCD instance.  */
-#ifdef USE_STATIC_RAM
-    static UX_HCD_XHCI _xhci __attribute__((section("usb_dma_buf")));
-    memset(&_xhci, 0, sizeof(_xhci));
-    xhci = &_xhci;
-#else
     xhci =  _ux_utility_memory_allocate(UX_NO_ALIGN, UX_REGULAR_MEMORY, sizeof(UX_HCD_XHCI));
-#endif
     if (xhci == NULL)
         return(UX_MEMORY_INSUFFICIENT);
 
