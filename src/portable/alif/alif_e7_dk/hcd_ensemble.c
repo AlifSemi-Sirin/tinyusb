@@ -147,12 +147,14 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 void hcd_int_enable (uint8_t rhport) {
   (void) rhport;
 //    printf("Called %s(%u)\n", __FUNCTION__, rhport);
+    NVIC_EnableIRQ(USB_IRQ_IRQn);
 }
 
 // Disable USB interrupt
 void hcd_int_disable(uint8_t rhport) {
   (void) rhport;
 //  printf("Called %s(%u)\n", __FUNCTION__, rhport);
+    NVIC_DisableIRQ(USB_IRQ_IRQn);
 }
 
 // Get frame number (1ms)
