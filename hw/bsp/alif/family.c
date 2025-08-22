@@ -31,7 +31,7 @@ void board_init(void) {
 
     // 1ms tick timer
     SysTick_Config(SystemCoreClock / 1000);
-    
+
     tracelib_init(NULL, NULL);
 #endif
 
@@ -59,7 +59,7 @@ void board_led_write(bool state) {
     if (device_is_ready(led.port)) {
         gpio_pin_set(led.port, led.pin, state ? 1 : 0);
     }
-#endif  
+#endif
 }
 
 /**
@@ -80,7 +80,7 @@ uint32_t board_button_read(void) {
     int val = gpio_pin_get_dt(&button);
 
     return val == 0;    // Pin pulled low when pressed
-#endif  
+#endif
 }
 
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
@@ -167,16 +167,18 @@ uint32_t board_millis(void) {
 }
 #endif
 
-
+uint32_t USB_IRQHandler_cnt = 0;
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
 void USB_IRQHandler(void);
 void USB_IRQHandler(void) {
-    dcd_int_handler(0);
+    USB_IRQHandler_cnt++;
+    tusb_int_handler(0, true);
 }
 #endif
 
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR
 void USBD_IRQHandler(void) {
+    USB_IRQHandler_cnt++;
     tud_int_handler(0);
 }
 #endif

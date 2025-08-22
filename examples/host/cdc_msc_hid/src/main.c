@@ -30,6 +30,8 @@
 #include "bsp/board_api.h"
 #include "tusb.h"
 
+#include "ux_hcd_xhci_api.h"
+
 //--------------------------------------------------------------------+
 // MACRO CONSTANT TYPEDEF PROTOTYPES
 //--------------------------------------------------------------------+
@@ -89,10 +91,21 @@ void tuh_umount_cb(uint8_t dev_addr) {
 // Blinking Task
 //--------------------------------------------------------------------+
 void led_blinking_task(void) {
-  const uint32_t interval_ms = 1000;
+  uint32_t interval_ms = 200;
   static uint32_t start_ms = 0;
 
   static bool led_state = false;
+
+  uint32_t reg;
+  reg = hcd_xhci->op_regs->USBSTS;
+  if ((reg & STS_HALT))
+  {
+      interval_ms = 200;
+  }
+  else
+  {
+      interval_ms = 1000;
+  }
 
   // Blink every interval ms
   if (board_millis() - start_ms < interval_ms) {
@@ -102,4 +115,5 @@ void led_blinking_task(void) {
 
   board_led_write(led_state);
   led_state = 1 - led_state; // toggle
+
 }
