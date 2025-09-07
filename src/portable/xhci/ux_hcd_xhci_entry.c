@@ -88,12 +88,14 @@ uint32_t  _ux_hcd_xhci_entry(UX_HCD *hcd, uint32_t function, void *parameter)
             if(((UX_TRANSFER *) parameter)->ux_transfer_request_function == UX_SET_ADDRESS)
             {
                 /* Assign the address to the Device..*/
+                printf("_ux_hcd_xhci_address_device()\n\r");
                 status = _ux_hcd_xhci_address_device(xhci, (((UX_TRANSFER*) parameter)->ux_transfer_request_endpoint->ux_endpoint_device));
                 break;
             }
             else
             {
                 /* transfer urb's  */
+                printf("_ux_hcd_xhci_transfer_request()\n\r");
                 status = _ux_hcd_xhci_transfer_request(xhci, (UX_TRANSFER *) parameter);
                 break;
             }
@@ -105,7 +107,12 @@ uint32_t  _ux_hcd_xhci_entry(UX_HCD *hcd, uint32_t function, void *parameter)
             {
                 case UX_CONTROL_ENDPOINT:
                     /* Enable the device slot id */
+                    printf("_ux_hcd_xhci_alloc_dev()\n\r");
                     status = _ux_hcd_xhci_alloc_dev(xhci, (((UX_ENDPOINT*) parameter)->ux_endpoint_device));
+                    if (status != 0)
+                        return status;
+                    printf("_ux_hcd_xhci_enable_device()\n\r");
+                    status = _ux_hcd_xhci_enable_device(xhci, (((UX_ENDPOINT*) parameter)->ux_endpoint_device));
                     break;
 
                 case UX_BULK_ENDPOINT:

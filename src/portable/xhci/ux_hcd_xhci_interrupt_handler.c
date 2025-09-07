@@ -122,23 +122,28 @@ int32_t _ux_hcd_xhci_handle_events(UX_HCD_XHCI *xhci)
     switch ((event->event_cmd.flags) & TRB_TYPE_BITMASK)
     {
         case TRB_TYPE(TRB_COMPLETION):
+            printf("TRB_COMPLETION \r\n");
             handle_cmd_completion(xhci, &event->event_cmd);
             break;
         case TRB_TYPE(TRB_PORT_STATUS):
+            printf("TRB_PORT_STATUS \r\n");
             handle_port_status(xhci, event);
             update_ptrs = 0;
             break;
         case TRB_TYPE(TRB_TRANSFER):
+            printf("TRB_TRANSFER \r\n");
             ret = handle_transfer_event(xhci, &event->trans_event);
             if (ret >= 0)
                 update_ptrs = 0;
             break;
         case TRB_TYPE(TRB_DEV_NOTE):
+            printf("TRB_DEV_NOTE \r\n");
             handle_device_notification(xhci, event);
             break;
         default:
             if (((event->event_cmd.flags) & TRB_TYPE_BITMASK) >= TRB_TYPE(48))
             {
+                printf("handle_vendor_event()\n\r");
                 handle_vendor_event(xhci, event);
             }
             else

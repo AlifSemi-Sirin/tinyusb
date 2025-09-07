@@ -219,6 +219,97 @@ extern   "C" {
 #define TX_STACK_FILL                   ((unsigned long)  0xEFEFEFEFUL)
 #endif
 
+
+/* Define USBX device speed constants.  */                              
+                                                                        
+#define UX_DEFAULT_HS_MPS                                               64
+#define UX_DEFAULT_MPS                                                  8
+
+#define UX_TOO_MANY_DEVICES                                             0x11
+
+#define UX_RH_ENUMERATION_RETRY                                         3
+#define UX_RH_ENUMERATION_RETRY_DELAY                                   100
+
+#define UX_DEVICE_HANDLE_UNKNOWN                                        0x50
+#define UX_CONFIGURATION_HANDLE_UNKNOWN                                 0x51
+#define UX_INTERFACE_HANDLE_UNKNOWN                                     0x52
+#define UX_ENDPOINT_HANDLE_UNKNOWN                                      0x53
+#define UX_FUNCTION_NOT_SUPPORTED                                       0x54
+#define UX_CONTROLLER_UNKNOWN                                           0x55
+#define UX_PORT_INDEX_UNKNOWN                                           0x56
+#define UX_NO_CLASS_MATCH                                               0x57
+#define UX_HOST_CLASS_ALREADY_INSTALLED                                 0x58
+#define UX_HOST_CLASS_UNKNOWN                                           0x59
+#define UX_CONNECTION_INCOMPATIBLE                                      0x5a
+#define UX_HOST_CLASS_INSTANCE_UNKNOWN                                  0x5b
+#define UX_TRANSFER_TIMEOUT                                             0x5c
+#define UX_BUFFER_OVERFLOW                                              0x5d
+#define UX_NO_ALTERNATE_SETTING                                         0x5e
+#define UX_NO_DEVICE_CONNECTED                                          0x5f
+
+#define UX_MAX_SELF_POWER                                               (500u/2)
+
+#define UX_DEVICE_RESET                                                 0
+#define UX_DEVICE_ATTACHED                                              1
+#define UX_DEVICE_ADDRESSED                                             2
+#define UX_DEVICE_CONFIGURED                                            3
+#define UX_DEVICE_SUSPENDED                                             4
+#define UX_DEVICE_RESUMED                                               5
+#define UX_DEVICE_SELF_POWERED_STATE                                    6
+#define UX_DEVICE_BUS_POWERED_STATE                                     7
+#define UX_DEVICE_REMOTE_WAKEUP                                         8
+#define UX_DEVICE_BUS_RESET_COMPLETED                                   9
+#define UX_DEVICE_REMOVED                                               10
+#define UX_DEVICE_FORCE_DISCONNECT                                      11
+
+#define UX_ENDPOINT_RESET                                               0
+#define UX_ENDPOINT_RUNNING                                             1
+#define UX_ENDPOINT_HALTED                                              2
+
+/* Define USBX transfer request status constants.  */                   
+                                                                        
+#define UX_TRANSFER_STATUS_NOT_PENDING                                  0
+#define UX_TRANSFER_STATUS_PENDING                                      1
+#define UX_TRANSFER_STATUS_COMPLETED                                    2 
+#define UX_TRANSFER_STATUS_ABORT                                        4
+
+#define UX_REQUEST_TYPE_STANDARD                                        0x00u
+#define UX_REQUEST_TARGET_DEVICE                                        0x00u
+
+#define UX_TRANSFER_STALLED                                             0x21
+#define UX_TRANSFER_NO_ANSWER                                           0x22
+#define UX_TRANSFER_ERROR                                               0x23
+#define UX_TRANSFER_MISSED_FRAME                                        0x24
+#define UX_TRANSFER_NOT_READY                                           0x25
+#define UX_TRANSFER_BUS_RESET                                           0x26
+#define UX_TRANSFER_BUFFER_OVERFLOW                                     0x27
+#define UX_TRANSFER_APPLICATION_RESET                                   0x28
+#define UX_TRANSFER_DATA_LESS_THAN_EXPECTED                             0x29
+
+#define UX_DEVICE_ADDRESS_SET_WAIT                                      50
+
+#define UX_DEVICE_DESCRIPTOR_LENGTH                                     18
+#define UX_REQUEST_TYPE_STANDARD                                        0x00u
+#define UX_REQUEST_TARGET_DEVICE                                        0x00u
+#define UX_DEVICE_DESCRIPTOR_ITEM                                       1u
+
+#define UX_PARAMETER_NOT_USED(p) ((void)(p))
+
+#define UX_DEVICE_HCD_GET(d)                    (_ux_system_host->ux_system_host_hcd_array)
+#define UX_DEVICE_HCD_SET(d,h)
+#define UX_DEVICE_HCD_MATCH(d,h)                (_ux_system_host->ux_system_host_hcd_array == (h))
+
+#define UX_DEVICE_PARENT_GET(d)                 (UX_NULL)
+#define UX_DEVICE_PARENT_SET(d,p)               UX_PARAMETER_NOT_USED(p)
+#define UX_DEVICE_PARENT_MATCH(d,p)             ((p) == UX_NULL)
+#define UX_DEVICE_PARENT_IS_HUB(d)              (UX_FALSE)
+#define UX_DEVICE_PARENT_IS_ROOTHUB(d)          (UX_TRUE)
+#define UX_DEVICE_MAX_POWER_GET(d)              (UX_MAX_SELF_POWER)
+#define UX_DEVICE_MAX_POWER_SET(d,p)            UX_PARAMETER_NOT_USED(p)
+#define UX_DEVICE_PORT_LOCATION_GET(d)          ((d)->ux_device_port_location)
+#define UX_DEVICE_PORT_LOCATION_SET(d,l)        do { (d)->ux_device_port_location = (l); } while(0)
+#define UX_DEVICE_PORT_LOCATION_MATCH(d,l)      ((d)->ux_device_port_location == (l))
+
 #define UX_WAIT_FOREVER TX_WAIT_FOREVER
 
 #define UX_NULL TX_NULL
@@ -229,11 +320,6 @@ extern   "C" {
 
 typedef tusb_desc_endpoint_t UX_ENDPOINT_DESCRIPTOR;
 
-typedef struct  {
-    tusb_desc_endpoint_t ux_endpoint_descriptor;
-    void *ux_endpoint_device;
-} UX_ENDPOINT;
-
 typedef struct UX_TRANSFER_STRUCT {
     unsigned long ux_transfer_request_status;
     unsigned long ux_transfer_request_actual_length;
@@ -243,7 +329,7 @@ typedef struct UX_TRANSFER_STRUCT {
     unsigned int ux_transfer_request_value;
     unsigned int ux_transfer_request_index;
     void (*ux_transfer_request_completion_function) (struct UX_TRANSFER_STRUCT *);
-    UX_ENDPOINT *ux_transfer_request_endpoint;
+    struct UX_ENDPOINT_STRUCT *ux_transfer_request_endpoint;
     unsigned long ux_transfer_request_maximum_length;
     unsigned long ux_transfer_request_timeout_value;
     unsigned int ux_transfer_request_completion_code;
@@ -253,21 +339,32 @@ typedef struct UX_TRANSFER_STRUCT {
     osal_semaphore_t ux_transfer_request_semaphore;
 } UX_TRANSFER;
 
-typedef struct  {
+typedef struct UX_ENDPOINT_STRUCT {
+    unsigned long   ux_endpoint;
+    unsigned long   ux_endpoint_state;
+    tusb_desc_endpoint_t ux_endpoint_descriptor;
+    struct UX_DEVICE_STRUCT *ux_endpoint_device;
+    struct UX_TRANSFER_STRUCT ux_endpoint_transfer_request;
+} UX_ENDPOINT;
+
+typedef struct UX_DEVICE_STRUCT {
+    unsigned long ux_device_handle;
+    unsigned long ux_device_state;
     unsigned long ux_device_address;
     unsigned long ux_device_speed;
+    UX_ENDPOINT ux_device_control_endpoint;
     unsigned long ux_device_port_location;
 } UX_DEVICE;
 
-typedef struct  {
+typedef struct UX_HCD_STRUCT {
     unsigned int ux_hcd_status;
     unsigned int ux_hcd_controller_type;
     unsigned int ux_hcd_irq;
     unsigned int ux_hcd_nb_root_hubs;
     unsigned int ux_hcd_root_hub_signal[UX_MAX_ROOTHUB_PORT];
-    void *ux_hcd_entry_function;
+    unsigned int (*ux_hcd_entry_function) (struct UX_HCD_STRUCT *, unsigned int, void *);
     void *ux_hcd_controller_hardware;
-    void *ux_hcd_io;
+    unsigned long ux_hcd_io;
 } UX_HCD;
 
 typedef struct  {
@@ -447,38 +544,37 @@ UX_MEMORY_BLOCK  *_ux_utility_memory_free_block_best_get(unsigned long memory_ca
 
 static inline int ux_endpoint_xfer_bulk(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
-    printf("Called %s(%p)\n", __FUNCTION__, epd);
-    return 1;
+    //printf("Called %s(%p)\n\r", __FUNCTION__, epd);
+    return (epd->bmAttributes.xfer == UX_BULK_ENDPOINT);
 }
 
 static inline int ux_endpoint_xfer_isoc(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
-    printf("Called %s(%p)\n", __FUNCTION__, epd);
-    return 0;
+    //printf("Called %s(%p)\n\r", __FUNCTION__, epd);
+    return (epd->bmAttributes.xfer == UX_ISOCHRONOUS_ENDPOINT);
 }
 
 static inline int ux_endpoint_xfer_int(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
-    printf("Called %s(%p)\n", __FUNCTION__, epd);
-    return 0;
+    //printf("Called %s(%p)\n", __FUNCTION__, epd);
+    return (epd->bmAttributes.xfer == UX_INTERRUPT_ENDPOINT);
 }
 
 static inline int ux_endpoint_xfer_control(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
-    printf("Called %s(%p)\n", __FUNCTION__, epd);
-    return 0;
+    //printf("Called %s(%p)\n\r", __FUNCTION__, epd);
+    return (epd->bmAttributes.xfer == UX_CONTROL_ENDPOINT);
 }
 
 static inline int ux_endpoint_maxp(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
-    printf("Called %s(%p)\n", __FUNCTION__, epd);
+    //printf("Called %s(%p)\n\r", __FUNCTION__, epd);
     return 512;
 }
 
 static inline int ux_endpoint_type(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
-    printf("Called %s(%p)\n", __FUNCTION__, epd);
-    return 0;
+   return epd->bmAttributes.xfer;
 }
 
 static void _ux_system_error_handler(unsigned int system_level, unsigned int system_context, unsigned int error_code)
@@ -486,6 +582,12 @@ static void _ux_system_error_handler(unsigned int system_level, unsigned int sys
     printf("Called %s(%u %u %u)\n", __FUNCTION__, system_level, system_context, error_code);
 }
 
+unsigned int _ux_utility_timer_create(UX_TIMER *timer, char *timer_name, void (*expiration_function) (void*),
+        void *expiration_input, unsigned long initial_ticks, unsigned long reschedule_ticks,
+        unsigned int activation_flag);
+unsigned int tx_timer_activate(UX_TIMER *timer);
+
+/*
 static inline unsigned int _ux_utility_timer_create(UX_TIMER *timer, char *timer_name, void (*expiration_function) (void*),
         void *expiration_input, unsigned long initial_ticks, unsigned long reschedule_ticks,
         unsigned int activation_flag)
@@ -500,10 +602,11 @@ static inline unsigned int tx_timer_activate(UX_TIMER *timer)
     printf("Called %s(%p)\n", __FUNCTION__, timer);
     return 0;
 }
+*/
 
 static inline unsigned int _ux_utility_event_flags_create(UX_EVENT_FLAGS_GROUP *group_ptr, char *name)
 {
-    printf("Called %s(%p '%s')\n", __FUNCTION__, group_ptr, name);
+    printf("Called %s(%p '%s')\n\r", __FUNCTION__, group_ptr, name);
     return 0;
 }
 

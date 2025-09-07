@@ -157,7 +157,7 @@ uint32_t _ux_hcd_xhci_reset_port(UX_HCD_XHCI *xhci, uint32_t port_index)
     reg = _ux_hcd_xhci_port_state_to_neutral(reg);
     /* Reset The port  */
 #ifdef DEBUG
-    printf("hcd port reset\n");
+    printf("hcd port reset\n\r");
 #endif
     reg |= PORT_RESET;
     /* Write into the Port Status and Control Register (PORTSC)  */

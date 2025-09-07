@@ -49,6 +49,8 @@ extern TX_EVENT_FLAGS_GROUP CONTROL_EP_FLAG;
 
 int32_t _ux_hcd_xhci_transfer_request(UX_HCD_XHCI *xhci, UX_TRANSFER *urb)
 {
+    printf("_ux_hcd_xhci_transfer_request\n\r");
+
     int32_t ret = 0;
     uint32_t slot_id, ep_index;
     uint32_t *ep_state;
