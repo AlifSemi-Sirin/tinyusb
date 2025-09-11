@@ -76,8 +76,6 @@ uint32_t  _ux_hcd_xhci_entry(UX_HCD *hcd, uint32_t function, void *parameter)
             break;
         case UX_HCD_RESET_PORT:
             status =  _ux_hcd_xhci_reset_port(xhci, (uint32_t) parameter);
-            /* delay is required to HC port will back to normal state after port reset  */
-            sys_busy_loop_us(1000*50);
             break;
         case UX_HCD_GET_FRAME_NUMBER:
             break;
@@ -88,14 +86,18 @@ uint32_t  _ux_hcd_xhci_entry(UX_HCD *hcd, uint32_t function, void *parameter)
             if(((UX_TRANSFER *) parameter)->ux_transfer_request_function == UX_SET_ADDRESS)
             {
                 /* Assign the address to the Device..*/
-                printf("_ux_hcd_xhci_address_device()\n\r");
+#ifdef DEBUG
+                printf("_ux_hcd_xhci_address_device()\r\n");
+#endif
                 status = _ux_hcd_xhci_address_device(xhci, (((UX_TRANSFER*) parameter)->ux_transfer_request_endpoint->ux_endpoint_device));
                 break;
             }
             else
             {
                 /* transfer urb's  */
-                printf("_ux_hcd_xhci_transfer_request()\n\r");
+#ifdef DEBUG
+                printf("_ux_hcd_xhci_transfer_request()\r\n");
+#endif
                 status = _ux_hcd_xhci_transfer_request(xhci, (UX_TRANSFER *) parameter);
                 break;
             }
@@ -107,11 +109,15 @@ uint32_t  _ux_hcd_xhci_entry(UX_HCD *hcd, uint32_t function, void *parameter)
             {
                 case UX_CONTROL_ENDPOINT:
                     /* Enable the device slot id */
-                    printf("_ux_hcd_xhci_alloc_dev()\n\r");
+#ifdef DEBUG
+                    printf("_ux_hcd_xhci_alloc_dev()\r\n");
+#endif
                     status = _ux_hcd_xhci_alloc_dev(xhci, (((UX_ENDPOINT*) parameter)->ux_endpoint_device));
                     if (status != 0)
                         return status;
-                    printf("_ux_hcd_xhci_enable_device()\n\r");
+#ifdef DEBUG
+                    printf("_ux_hcd_xhci_enable_device()\r\n");
+#endif
                     status = _ux_hcd_xhci_enable_device(xhci, (((UX_ENDPOINT*) parameter)->ux_endpoint_device));
                     break;
 
