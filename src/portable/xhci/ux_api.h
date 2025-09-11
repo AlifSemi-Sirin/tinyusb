@@ -220,8 +220,8 @@ extern   "C" {
 #endif
 
 
-/* Define USBX device speed constants.  */                              
-                                                                        
+/* Define USBX device speed constants.  */
+
 #define UX_DEFAULT_HS_MPS                                               64
 #define UX_DEFAULT_MPS                                                  8
 
@@ -266,11 +266,11 @@ extern   "C" {
 #define UX_ENDPOINT_RUNNING                                             1
 #define UX_ENDPOINT_HALTED                                              2
 
-/* Define USBX transfer request status constants.  */                   
-                                                                        
+/* Define USBX transfer request status constants.  */
+
 #define UX_TRANSFER_STATUS_NOT_PENDING                                  0
 #define UX_TRANSFER_STATUS_PENDING                                      1
-#define UX_TRANSFER_STATUS_COMPLETED                                    2 
+#define UX_TRANSFER_STATUS_COMPLETED                                    2
 #define UX_TRANSFER_STATUS_ABORT                                        4
 
 #define UX_REQUEST_TYPE_STANDARD                                        0x00u
@@ -528,7 +528,7 @@ extern UX_SYSTEM *_ux_system;
 #define UX_EVENT_FLAGS_GROUP                                            TX_EVENT_FLAGS_GROUP
 
 typedef struct  {
-    int dummy;
+    unsigned long flags;
 } TX_EVENT_FLAGS_GROUP;
 
 unsigned int  _ux_system_initialize(void *regular_memory_pool_start, unsigned long regular_memory_size,
@@ -613,15 +613,27 @@ static inline unsigned int _ux_utility_event_flags_create(UX_EVENT_FLAGS_GROUP *
 static inline unsigned int _ux_utility_event_flags_set(UX_EVENT_FLAGS_GROUP*group_ptr, unsigned long flags_to_set,
         unsigned int set_option)
 {
-    printf("Called %s(%p %lu %u)\n", __FUNCTION__, group_ptr, flags_to_set, set_option);
+    //printf("Called %s(%p %lu %u)\n", __FUNCTION__, group_ptr, flags_to_set, set_option);
+    group_ptr->flags |= flags_to_set;
     return 0;
 }
 
 static inline unsigned int _ux_utility_event_flags_get(UX_EVENT_FLAGS_GROUP*group_ptr, unsigned long requested_flags,
         unsigned int get_option, unsigned long *actual_flags_ptr, unsigned long wait_option)
 {
-    printf("Called %s(%p %lu %u %p %lu)\n", __FUNCTION__, group_ptr, requested_flags, get_option, actual_flags_ptr, wait_option);
-    return 0;
+    printf("Called %s(%p %lu %u %p 0x%lx)\n", __FUNCTION__, group_ptr, requested_flags, get_option, actual_flags_ptr, wait_option);
+    for (unsigned long i = 0; i < wait_option; i++)
+    {
+        if (group_ptr->flags & requested_flags)
+        {
+            group_ptr->flags &= ~requested_flags;
+            return UX_SUCCESS;
+        }
+
+        sys_busy_loop_us(1000);
+    }
+
+    return UX_ERROR;
 }
 
 #ifdef   __cplusplus
