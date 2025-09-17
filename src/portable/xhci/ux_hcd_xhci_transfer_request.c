@@ -49,8 +49,6 @@ extern TX_EVENT_FLAGS_GROUP CONTROL_EP_FLAG;
 
 int32_t _ux_hcd_xhci_transfer_request(UX_HCD_XHCI *xhci, UX_TRANSFER *urb)
 {
-    printf("_ux_hcd_xhci_transfer_request\n\r");
-
     int32_t ret = 0;
     uint32_t slot_id, ep_index;
     uint32_t *ep_state;
@@ -64,6 +62,8 @@ int32_t _ux_hcd_xhci_transfer_request(UX_HCD_XHCI *xhci, UX_TRANSFER *urb)
     ep_index = _ux_hcd_xhci_get_endpoint_index(&urb->ux_transfer_request_endpoint->ux_endpoint_descriptor);
     ep_state = &xhci->devs[slot_id]->eps[ep_index].ep_state;
     xhci->device = device;
+
+    printf("_ux_hcd_xhci_transfer_request(%lu %lu %lu)\n\r", slot_id, ep_index, urb->ux_transfer_request_requested_length);
 
     if (xhci->devs[slot_id]->flags & VDEV_PORT_ERROR)
     {

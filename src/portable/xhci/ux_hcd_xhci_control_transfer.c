@@ -106,10 +106,14 @@ int32_t _ux_hcd_xhci_control_transfer_request(UX_HCD_XHCI *xhci, UX_TRANSFER *ur
         | urb -> ux_transfer_request_value << 16;
     trb_info.high_address = urb -> ux_transfer_request_index | urb -> ux_transfer_request_requested_length << 16;
     trb_info.size =  TRB_LEN(8) | TRB_INTR_TARGET(0);
+#if 1
     trb_info.cntrl_field = field;
+#else
+    trb_info.cntrl_field = field | TRB_IOC;
+#endif
     /* Queue the SETUP Stage TRB   */
     queue_trb(xhci, ep_ring,true, &trb_info);
-
+#if 1
     /* If there's data, queue data TRBs */
     /* Only set interrupt on short packet for IN endpoints   */
     if ((urb -> ux_transfer_request_type & UX_REQUEST_DIRECTION ) == UX_REQUEST_IN)
@@ -161,6 +165,7 @@ int32_t _ux_hcd_xhci_control_transfer_request(UX_HCD_XHCI *xhci, UX_TRANSFER *ur
     trb_info.cntrl_field = field | TRB_IOC | TRB_TYPE(TRB_STATUS_) | ep_ring->cycle_state;
     /* Queue status TRB   */
     queue_trb(xhci, ep_ring, false, &trb_info);
+#endif
     /* Give the trb to endpoint doorbell */
     giveback_first_trb(xhci, slot_id, ep_index, 0, start_cycle, start_trb);
     return 0;

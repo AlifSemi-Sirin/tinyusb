@@ -323,7 +323,9 @@ uint32_t _ux_hcd_xhci_alloc_erst(UX_HCD_XHCI *xhci, UX_XHCI_RING *evt_ring, UX_X
     UX_XHCI_SEGMENT *seg;
     UX_XHCI_ERST_ENTRY *entry;
     size = sizeof(UX_XHCI_ERST_ENTRY) * evt_ring->num_segs;
-    printf("size=%u, evt_ring->num_segs=%u\n\r", size, evt_ring->num_segs);
+#ifdef DEBUG
+    printf("size=%u, evt_ring->num_segs=%u\r\n", size, evt_ring->num_segs);
+#endif
     erst->entries = _ux_utility_memory_allocate(UX_NO_ALIGN, UX_REGULAR_MEMORY, 2 * size);
     if (!erst->entries)
         return 1;
@@ -524,7 +526,7 @@ static void _ux_hcd_xhci_add_in_port(UX_HCD_XHCI *xhci,uint32_t num_ports, uint3
     if ((xhci->hci_version >= 0x100) && (major_revision != 0x03) && (temp & UX_XHCI_HLC))
     {
 #ifdef DEBUG
-        printf("xHCI 1.0: support USB2 hardware lpm\n\r");
+        printf("xHCI 1.0: support USB2 hardware lpm\r\n");
 #endif
         xhci->hw_lpm_support = 1;
     }
@@ -661,7 +663,7 @@ uint32_t _ux_hcd_xhci_mem_init(UX_HCD_XHCI *xhci)
     if (i < 16)
     {
 #ifdef DEBUG
-        printf("Supported page size of %iK\n\r", (1 << (i+12)) / 1024);
+        printf("Supported page size of %iK\r\n", (1 << (i+12)) / 1024);
 #endif
     }
     else

@@ -613,7 +613,7 @@ static inline unsigned int _ux_utility_event_flags_create(UX_EVENT_FLAGS_GROUP *
 static inline unsigned int _ux_utility_event_flags_set(UX_EVENT_FLAGS_GROUP*group_ptr, unsigned long flags_to_set,
         unsigned int set_option)
 {
-    //printf("Called %s(%p %lu %u)\n", __FUNCTION__, group_ptr, flags_to_set, set_option);
+    //printf("Called %s(%p %lu %u)\r\n", __FUNCTION__, group_ptr, flags_to_set, set_option);
     group_ptr->flags |= flags_to_set;
     return 0;
 }
@@ -621,7 +621,7 @@ static inline unsigned int _ux_utility_event_flags_set(UX_EVENT_FLAGS_GROUP*grou
 static inline unsigned int _ux_utility_event_flags_get(UX_EVENT_FLAGS_GROUP*group_ptr, unsigned long requested_flags,
         unsigned int get_option, unsigned long *actual_flags_ptr, unsigned long wait_option)
 {
-    printf("Called %s(%p %lu %u %p 0x%lx)\n", __FUNCTION__, group_ptr, requested_flags, get_option, actual_flags_ptr, wait_option);
+    //printf("Called %s(%p %lu %u %p 0x%lx)\r\n", __FUNCTION__, group_ptr, requested_flags, get_option, actual_flags_ptr, wait_option);
     for (unsigned long i = 0; i < wait_option; i++)
     {
         if (group_ptr->flags & requested_flags)

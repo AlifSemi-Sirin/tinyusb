@@ -83,8 +83,7 @@ bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
   (void) cfg_param;
 
   printf("Called %s(%u %u %p)\n", __FUNCTION__, rhport, cfg_id, cfg_param);
-
-  return false;
+  return true;
 }
 
 UX_HCD *_hcd;
@@ -94,7 +93,7 @@ bool hcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
   (void) rhport;
   (void) rh_init;
 
-  static UX_HCD hcd;
+  static UX_HCD hcd __attribute__((section("usb_dma_buf")));
   _hcd = &hcd;
   uint32_t ret;
 
@@ -129,7 +128,7 @@ bool hcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
 
   ret = _ux_hcd_xhci_initialize(&hcd);
 
-  printf("_ux_hcd_xhci_initialize() returned %d\n\r", ret);
+  printf("%010u _ux_hcd_xhci_initialize() returned %d\r\n", DWT->CYCCNT, ret);
 
   return ret == UX_SUCCESS;
 }
@@ -140,7 +139,37 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
   (void) rhport;
   (void) in_isr;
   uint32_t port_status = hcd_xhci->op_regs->PORTSC;
-  printf("Called %s(%u %u), port_status=%#x\n\r", __FUNCTION__, rhport, in_isr, port_status);
+#ifdef DEBUG
+  printf("%010u Called %s(%u %u), port_status=%#x\r\n", DWT->CYCCNT, __FUNCTION__, rhport, in_isr, port_status);
+#endif
+#if 0
+  printf("PS: %s%s%s%s%s%sPLS%u %sROS%u RWS%u %s%s%s%s%s%s%s%s%s%s%s%s%s%s\r\n",
+         port_status & UX_PS_CCS ? "CSS " : "",
+         port_status & UX_PS_PES ? "PES " : "",
+         port_status & UX_PS_PSS ? "PSS " : "",
+         port_status & UX_PS_POCI? "POCI " : "",
+         port_status & UX_PS_PRS ? "PRS " : "",
+         port_status & UX_PS_PPS ? "PPS " : "",
+         (port_status >> 5) & 0x0f,
+         port_status & (1 << 9) ? "PP " : "",
+         (port_status >> 10) & 0x0f,
+         (port_status >> 14) & 0x03,
+         port_status & (1 << 16) ? "LWS " : "",
+         port_status & (1 << 17) ? "CSC " : "",
+         port_status & (1 << 18) ? "PEC " : "",
+         port_status & (1 << 19) ? "WRC " : "",
+         port_status & (1 << 20) ? "OCC " : "",
+         port_status & (1 << 21) ? "PRC " : "",
+         port_status & (1 << 22) ? "PLC " : "",
+         port_status & (1 << 23) ? "CEC " : "",
+         port_status & (1 << 24) ? "CAS " : "",
+         port_status & (1 << 25) ? "WCE " : "",
+         port_status & (1 << 26) ? "WDE " : "",
+         port_status & (1 << 27) ? "WOE " : "",
+         port_status & (1 << 30) ? "DR " : "",
+         port_status & (1 << 31) ? "WPR " : ""
+        );
+#endif
 
   _ux_xhci_event_irq_handler(hcd_xhci);
 }
@@ -183,9 +212,9 @@ void hcd_port_reset(uint8_t rhport) {
   UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
   uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_RESET_PORT, (void *)((ALIGN_TYPE)rhport));
   if (port_status != UX_SUCCESS) {
-    printf("ERROR: HCD port reset has failed\n\r");
+    printf("ERROR: HCD port reset has failed\r\n");
   } else {
-    printf("DEBUG: HCD port reset success\n\r");
+    printf("DEBUG: HCD port reset success\r\n");
   }
 }
 
@@ -199,16 +228,16 @@ tusb_speed_t hcd_port_speed_get(uint8_t rhport) {
   (void) rhport;
   uint32_t port_sts_ctrl = hcd_xhci->op_regs->PORTSC;
   if (DEV_LOWSPEED(port_sts_ctrl)) {
-    printf("DEBUG: low speed device\n\r");
+    printf("DEBUG: low speed device\r\n");
     return TUSB_SPEED_LOW;
   } else if (DEV_FULLSPEED(port_sts_ctrl)) {
-    printf("DEBUG: full speed device\n\r");
+    printf("DEBUG: full speed device\r\n");
     return TUSB_SPEED_FULL;
   } else if (DEV_HIGHSPEED(port_sts_ctrl)) {
-    printf("DEBUG: high speed device\n\r");
+    printf("DEBUG: high speed device\r\n");
     return TUSB_SPEED_HIGH;
   } else {
-    printf("ERROR: invalid device speed (%x)\n\r", DEV_PORT_SPEED(port_sts_ctrl));
+    printf("ERROR: invalid device speed (%x)\r\n", DEV_PORT_SPEED(port_sts_ctrl));
     return TUSB_SPEED_INVALID;
   }
 }
@@ -232,10 +261,10 @@ UX_DEVICE  *_ux_host_stack_new_device_get(void)
 ULONG           container_index;
 #endif
 UX_DEVICE       *device;
-    
+
     /* Start with the first device.  */
     void *memory =  _ux_utility_memory_allocate(UX_NO_ALIGN, UX_REGULAR_MEMORY, sizeof(UX_DEVICE));
-    device =  (UX_DEVICE *) memory;    
+    device =  (UX_DEVICE *) memory;
 
 #if UX_MAX_DEVICES > 1
     /* Reset the container index.  */
@@ -275,11 +304,14 @@ unsigned int  _ux_host_stack_transfer_request(UX_TRANSFER *transfer_request)
 
 //UX_INTERRUPT_SAVE_AREA
 
-UX_ENDPOINT     *endpoint;  
-UX_DEVICE       *device;    
+UX_ENDPOINT     *endpoint;
+UX_DEVICE       *device;
 UX_HCD          *hcd;
 unsigned int            status;
-    
+
+#ifdef DEBUG
+    printf("_ux_host_stack_transfer_request()\r\n");
+#endif
 
     /* Get the endpoint container from the transfer_request */
     endpoint =  transfer_request -> ux_transfer_request_endpoint;
@@ -287,7 +319,7 @@ unsigned int            status;
     /* Get the device container from the endpoint.  */
     device =  endpoint -> ux_endpoint_device;
 
-    /* Ensure we are not preempted by the enum thread while we check the device 
+    /* Ensure we are not preempted by the enum thread while we check the device
        state and set the transfer status.  */
     //UX_DISABLE
 
@@ -330,7 +362,7 @@ unsigned int            status;
 
     /* If trace is enabled, insert this event into the trace buffer.  */
     //UX_TRACE_IN_LINE_INSERT(UX_TRACE_HOST_STACK_TRANSFER_REQUEST, device, endpoint, transfer_request, 0, UX_TRACE_HOST_STACK_EVENTS, 0, 0)
-    
+
     /* With the device we have the pointer to the HCD.  */
     //hcd = UX_DEVICE_HCD_GET(device);
     hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
@@ -340,21 +372,21 @@ unsigned int            status;
     // {
 
     //     /* Check if the class has already protected it.  */
-    //     if (device -> ux_device_protection_semaphore.tx_semaphore_count != 0)        
+    //     if (device -> ux_device_protection_semaphore.tx_semaphore_count != 0)
     //     {
 
     //         /* We are using endpoint 0. Protect with semaphore.  */
     //         status =  _ux_utility_semaphore_get(&device -> ux_device_protection_semaphore, UX_WAIT_FOREVER);
-    
+
     //         /* Check for status.  */
     //         if (status != UX_SUCCESS)
-            
+
     //             /* Something went wrong. */
     //             return(status);
-    //     }        
-    // }             
-    
-    /* Send the command to the controller.  */    
+    //     }
+    // }
+
+    /* Send the command to the controller.  */
     status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_TRANSFER_REQUEST, transfer_request);
 
     /* If this is endpoint 0, we unprotect the endpoint. */
@@ -374,7 +406,9 @@ UX_TRANSFER     *transfer_request;
 UX_ENDPOINT     *control_endpoint;
 unsigned short          device_address;
 
-    printf("_ux_host_stack_device_address_set()\n\r");
+#ifdef DEBUG
+    printf("_ux_host_stack_device_address_set()\r\n");
+#endif
     UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
     UX_HCD_XHCI *xhci =  (UX_HCD_XHCI *) hcd -> ux_hcd_controller_hardware;
 
@@ -420,7 +454,7 @@ unsigned short          device_address;
 
         /* We have an error at the first device transaction. This is mostly
             due to the device having failed on the reset after power up.
-            we will try again either at the root hub or regular hub. */   
+            we will try again either at the root hub or regular hub. */
         return(status);
     }
 }
@@ -432,7 +466,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   (void) rhport;
   (void) dev_addr;
   (void) ep_desc;
-  printf("Called %s(%u %u %p)\n\r", __FUNCTION__, rhport, dev_addr, ep_desc);
+  printf("Called %s(%u %u %p)\r\n", __FUNCTION__, rhport, dev_addr, ep_desc);
 
   // NOTE: ep_desc is allocated on the stack when called from usbh_edpt_control_open()
   // You need to copy the data into a local variable who maintains the state of the endpoint and transfer.
@@ -445,7 +479,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   tuh_bus_info_get(dev_addr, &bus_info);
 
   if (ep_desc->bEndpointAddress == 0) {
-    printf("_ux_host_stack_new_device_get() \n\r");
+    printf("_ux_host_stack_new_device_get() \r\n");
     UX_DEVICE  *device = _ux_host_stack_new_device_get();
     if (device == UX_NULL)
       // UX_TOO_MANY_DEVICES
@@ -453,7 +487,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 
     // Store the device instance.
     _created_device = device;
-    
+
     // At this stage the device is attached but not configured.
     //   we don't have to worry about power consumption yet.
     //   Initialize the device structure.  */
@@ -487,7 +521,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     }
 
     // Create the default control endpoint at the HCD level.
-    printf("UX_HCD_CREATE_ENDPOINT\n\r");
+    //printf("UX_HCD_CREATE_ENDPOINT\r\n");
     unsigned int status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_CREATE_ENDPOINT, (void *) control_endpoint);
     if (status == UX_SUCCESS) {
       // Now control endpoint is ready, set state to running
@@ -523,9 +557,14 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   (void) buffer;
   (void) buflen;
 
-  printf("Called %s(%u %u %u %p %u)\n", __FUNCTION__, rhport, dev_addr, ep_addr, buffer, buflen);
+  printf("Called %s(%u %u %u %p %u)", __FUNCTION__, rhport, dev_addr, ep_addr, buffer, buflen);
+  for (int i = 0; i < buflen; i++)
+  {
+      printf(" %02x", buffer[i]);
+  }
+  printf("\n");
 
-  return false;
+  return true;
 }
 
 // Abort a queued transfer. Note: it can only abort transfer that has not been started
@@ -550,10 +589,10 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   (void) dev_addr;
   (void) setup_packet;
 
-  printf("Called %s(%u %u %p)\n\r", __FUNCTION__, rhport, dev_addr, setup_packet);
-  
+  printf("Called %s(%u %u %p)\r\n", __FUNCTION__, rhport, dev_addr, setup_packet);
+
   // Retrieve the pointer to the control endpoint.
-  UX_DEVICE       *device = _created_device; 
+  UX_DEVICE       *device = _created_device;
   UX_ENDPOINT     *control_endpoint =  &device -> ux_device_control_endpoint;
   UX_TRANSFER     *transfer_request =  &control_endpoint -> ux_endpoint_transfer_request;
 
@@ -563,7 +602,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   if (descriptor == UX_NULL)
     return(UX_MEMORY_INSUFFICIENT);
 
-  // Create a transfer_request for the GET_DESCRIPTOR request. The first transfer_request asks 
+  // Create a transfer_request for the GET_DESCRIPTOR request. The first transfer_request asks
   // for the first 8 bytes only. This way we will know the real MaxPacketSize
   // value for the control endpoint.
   transfer_request -> ux_transfer_request_data_pointer =      descriptor;
@@ -590,7 +629,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
     // Check for correct transfer and entire descriptor returned.
     if ((status == UX_SUCCESS) && (transfer_request -> ux_transfer_request_actual_length == 8)) {
       // Print descriptor
-      printf("%2.x %2.x %2.x %2.x %2.x %2.x %2.x %2.x",
+      printf("descriptor: %2x %2x %2x %2x %2x %2x %2x %2x\r\n",
       descriptor[0],descriptor[1],descriptor[2],descriptor[3],
       descriptor[4],descriptor[5],descriptor[6],descriptor[7]);
 

@@ -268,6 +268,9 @@ void _ux_hcd_xhci_ring_cmd_db(UX_HCD_XHCI *xhci)
 {
     if (!(xhci->cmd_ring_state & CMD_RING_STATE_RUNNING))
         return;
+#if 1//def DEBUG
+    printf("%010u _ux_hcd_xhci_ring_cmd_db()\r\n", DWT->CYCCNT);
+#endif
     xhci->dba_regs->DOORBELL[0] = DB_VALUE_HOST;
 
 }
@@ -290,6 +293,9 @@ void _ux_hcd_xhci_ring_ep_doorbell(
     if ((ep_state & EP_STOP_CMD_PENDING) || (ep_state & SET_DEQ_PENDING) ||
             (ep_state & EP_HALTED) || (ep_state & EP_CLEARING_TT))
         return;
+#if 1//def DEBUG
+    printf("%010u _ux_hcd_xhci_ring_ep_doorbell(%u %u %u)\r\n", DWT->CYCCNT, slot_id, ep_index, stream_id);
+#endif
     xhci->dba_regs->DOORBELL[slot_id] = DB_VALUE(ep_index, stream_id);
 }
 
@@ -1125,7 +1131,9 @@ void handle_cmd_completion(UX_HCD_XHCI *xhci, UX_XHCI_EVENT_CMD *event)
     switch (cmd_type)
     {
         case TRB_ENABLE_SLOT:
-            printf("TRB_ENABLE_SLOT\n\r");
+#ifdef DEBUG
+            printf("TRB_ENABLE_SLOT\r\n");
+#endif
             if(cmd_comp_code == COMP_SUCCESS)
             {
                 cmd->slot_id =  slot_id;
@@ -1136,45 +1144,65 @@ void handle_cmd_completion(UX_HCD_XHCI *xhci, UX_XHCI_EVENT_CMD *event)
             }
             break;
         case TRB_DISABLE_SLOT:
-            printf("TRB_DISABLE_SLOT\n\r");
+#ifdef DEBUG
+            printf("TRB_DISABLE_SLOT\r\n");
             _ux_hcd_xhci_handle_cmd_disable_slot(xhci, slot_id);
+#endif
             break;
         case TRB_CONFIG_EP:
-            printf("TRB_CONFIG_EP\n\r");
+#ifdef DEBUG
+            printf("TRB_CONFIG_EP\r\n");
             _ux_hcd_xhci_handle_cmd_config_ep(xhci, slot_id, event, cmd_comp_code);
+#endif
             break;
         case TRB_EVAL_CONTEXT:
-            printf("TRB_EVAL_CONTEXT\n\r");
+#ifdef DEBUG
+            printf("TRB_EVAL_CONTEXT\r\n");
+#endif
             break;
         case TRB_ADDR_DEV:
-            printf("TRB_ADDR_DEV\n\r");
+#ifdef DEBUG
+            printf("TRB_ADDR_DEV\r\n");
+#endif
             break;
         case TRB_STOP_RING:
-            printf("TRB_STOP_RING\n\r");
+#ifdef DEBUG
+            printf("TRB_STOP_RING\r\n");
+#endif
             _ux_hcd_xhci_handle_cmd_stop_ep(xhci, slot_id, cmd_trb, event);
             break;
         case TRB_SET_DEQ:
-            printf("TRB_SET_DEQ\n\r");
+#ifdef DEBUG
+            printf("TRB_SET_DEQ\r\n");
+#endif
             _ux_hcd_xhci_handle_cmd_set_deq(xhci, slot_id, cmd_trb, cmd_comp_code);
             break;
         case TRB_CMD_NOOP:
-            printf("TRB_CMD_NOOP\n\r");
+#ifdef DEBUG
+            printf("TRB_CMD_NOOP\r\n");
+#endif
             /* Is this an aborted command turned to NO-OP? */
             if (cmd->status == COMP_COMMAND_RING_STOPPED)
                 cmd_comp_code = COMP_COMMAND_RING_STOPPED;
             break;
         case TRB_RESET_EP:
-            printf("TRB_RESET_EP\n\r");
+#ifdef DEBUG
+            printf("TRB_RESET_EP\r\n");
+#endif
             _ux_hcd_xhci_handle_cmd_reset_ep(xhci, slot_id, cmd_trb, cmd_comp_code);
             break;
         case TRB_RESET_DEV:
-            printf("TRB_RESET_DEV\n\r");
+#ifdef DEBUG
+            printf("TRB_RESET_DEV\r\n");
+#endif
             /* SLOT_ID field in reset device cmd completion event TRB is 0.
              * Use the SLOT_ID from the command TRB instead (xhci 4.6.11) */
             slot_id = TRB_TO_SLOT_ID((cmd_trb->generic.field[3]));
             break;
         case TRB_NEC_GET_FW:
-            printf("TRB_NEC_GET_FW\n\r");
+#ifdef DEBUG
+            printf("TRB_NEC_GET_FW\r\n");
+#endif
             break;
         default:
             /* Skip over unknown commands on the event ring */
@@ -1600,6 +1628,26 @@ void queue_trb(
     trb->field[1] = trb_info->high_address;
     trb->field[2] = trb_info->size;
     trb->field[3] = trb_info->cntrl_field;
+
+#ifdef DEBUG
+    printf("Called %s(0x%lx, 0x%lx, %lu, 0x%lx)", __FUNCTION__, trb->field[0], trb->field[1], trb->field[2], trb->field[3]);
+    uint8_t *buf;
+    if ((trb_info->cntrl_field & TRB_IDT) && (trb_info->size <= 8))
+    {
+        buf = (uint8_t *)trb_info;
+    }
+    else
+    {
+        buf = GlobalToLocal(trb_info->low_address);
+    }
+
+    for (int i = 0; i < trb_info->size; i++)
+    {
+        printf(" %02x", buf[i]);
+    }
+    printf("\n");
+#endif
+
     RTSS_CleanDCache_by_Addr(trb, sizeof(*trb));
     inc_enq(xhci, ring, more_trbs_coming);
 }
@@ -2645,7 +2693,7 @@ void _ux_hcd_xhci_copy_ep0_dequeue_into_input_ctx(UX_HCD_XHCI *xhci, UX_DEVICE *
     UX_XHCI_RING  *ep_ring;
     virt_dev = xhci->devs[xhci->slot_id];
 #ifdef DEBUG
-    printf("_ux_hcd_xhci_copy_ep0_dequeue_into_input_ctx()\n\r");
+    printf("_ux_hcd_xhci_copy_ep0_dequeue_into_input_ctx()\r\n");
 #endif
     ep0_ctx = _ux_hcd_xhci_get_ep_ctx(xhci, virt_dev->in_ctx, 0);
     ep_ring = virt_dev->eps[0].ring;
@@ -2673,7 +2721,9 @@ void _ux_hcd_xhci_copy_ep0_dequeue_into_input_ctx(UX_HCD_XHCI *xhci, UX_DEVICE *
 static int32_t _ux_hcd_xhci_setup_device(UX_HCD_XHCI *xhci, UX_DEVICE *udev,
         UX_XHCI_SETUP_DEV  setup)
 {
-    printf("_ux_hcd_xhci_setup_device()\n\r");
+#ifdef DEBUG
+    printf("_ux_hcd_xhci_setup_device()\r\n");
+#endif
 
     const char *act = setup == SETUP_CONTEXT_ONLY ? "context" : "address";
     UX_XHCI_VIRT_DEVICE *virt_dev;
@@ -2766,7 +2816,7 @@ static int32_t _ux_hcd_xhci_setup_device(UX_HCD_XHCI *xhci, UX_DEVICE *udev,
     osal_mutex_unlock(&xhci -> ux_hcd_xhci_periodic_mutex);
     /* Wait for the command completion  */
     while(command->fCompletion);
-    printf("command->status=%d\n\r", command->status);
+    printf("command->status=%d\r\n", command->status);
 
     switch (command->status){
         case COMP_COMMAND_ABORTED:
@@ -2797,7 +2847,7 @@ static int32_t _ux_hcd_xhci_setup_device(UX_HCD_XHCI *xhci, UX_DEVICE *udev,
             break;
         case COMP_SUCCESS:
 #ifdef DEBUG
-            printf("Successful setup %s command\n\r", act);
+            printf("Successful setup %s command\r\n", act);
 #endif
             ret = 0;
             break;

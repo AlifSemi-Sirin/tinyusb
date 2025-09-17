@@ -122,28 +122,42 @@ int32_t _ux_hcd_xhci_handle_events(UX_HCD_XHCI *xhci)
     switch ((event->event_cmd.flags) & TRB_TYPE_BITMASK)
     {
         case TRB_TYPE(TRB_COMPLETION):
+#ifdef DEBUG
             printf("TRB_COMPLETION \r\n");
+#endif
             handle_cmd_completion(xhci, &event->event_cmd);
             break;
         case TRB_TYPE(TRB_PORT_STATUS):
+#ifdef DEBUG
             printf("TRB_PORT_STATUS \r\n");
+#endif
             handle_port_status(xhci, event);
             update_ptrs = 0;
             break;
         case TRB_TYPE(TRB_TRANSFER):
+#ifdef DEBUG
             printf("TRB_TRANSFER \r\n");
+#endif
+
+            //hcd_event_xfer_complete(hcchar.dev_addr, ep_addr, xfer->xferred_bytes, (xfer_result_t)xfer->result, in_isr);
+            //hcd_event_xfer_complete(0, 0, 8, XFER_RESULT_SUCCESS, true);
+
             ret = handle_transfer_event(xhci, &event->trans_event);
             if (ret >= 0)
                 update_ptrs = 0;
             break;
         case TRB_TYPE(TRB_DEV_NOTE):
+#ifdef DEBUG
             printf("TRB_DEV_NOTE \r\n");
+#endif
             handle_device_notification(xhci, event);
             break;
         default:
             if (((event->event_cmd.flags) & TRB_TYPE_BITMASK) >= TRB_TYPE(48))
             {
+#ifdef DEBUG
                 printf("handle_vendor_event()\n\r");
+#endif
                 handle_vendor_event(xhci, event);
             }
             else
@@ -213,6 +227,10 @@ int32_t handle_transfer_event(UX_HCD_XHCI *xhci, UX_XHCI_TRANSFER_EVENT *event)
 #endif
         goto err_out;
     }
+
+    printf("%s(): ep_ring=%p, trb_comp_code=%u, event->transfer_len=%u\r\n", __FUNCTION__,
+           ep_ring, trb_comp_code, EVENT_TRB_LEN((event->transfer_len)));
+
     /* Some transfer events don't always point to a trb, see xhci 4.17.4 */
     if (!ep_ring)
     {

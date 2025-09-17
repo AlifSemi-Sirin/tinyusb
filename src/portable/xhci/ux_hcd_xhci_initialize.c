@@ -74,7 +74,7 @@ uint32_t _ux_hcd_xhci_halt(UX_HCD_XHCI *xhci)
     if ((reg & STS_HALT) == 0)
     {
 #ifdef DEBUG
-        printf("Host halt failed, %d\n\r", reg);
+        printf("Host halt failed, %d\r\n", reg);
 #endif
         return 1;
     }
@@ -150,7 +150,7 @@ uint32_t _ux_hcd_xhci_reset(UX_HCD_XHCI *xhci)
         return 1;
     }
 #ifdef DEBUG
-    printf("Reset the Host controller\n\r");
+    printf("Reset the Host controller\r\n");
 #endif
     reg = xhci->op_regs->USBCMD;
     reg |= CMD_RESET;
@@ -205,7 +205,7 @@ void _ux_hcd_xhci_start(UX_HCD_XHCI *xhci)
     reg = xhci->op_regs->USBCMD;
     reg |= UX_XHCI_CMD_RUN;
 #ifdef DEBUG
-    printf("Turn on Host controller\n\r");
+    printf("Turn on Host controller\r\n");
 #endif
     xhci->op_regs->USBCMD = reg;
     /*
@@ -274,13 +274,15 @@ void _ux_hcd_xhci_host_timer_function(void *arg)
 
     if (_ux_hcd_xhci_port_current_status_get(hcd_xhci, 0))
     {
-        printf("_ux_hcd_xhci_port_current_status_get\n\r");
+#ifdef DEBUG
+        printf("_ux_hcd_xhci_port_current_status_get\r\n");
+#endif
 
         /* Is this HCD operational?  */
         if (hcd -> ux_hcd_status == UX_HCD_STATUS_OPERATIONAL)
         {
             //hcd -> ux_hcd_root_hub_signal[0]++;
-            
+
             // Call HCD for port status
             uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_GET_PORT_STATUS, (void *)((ALIGN_TYPE)port_index));
             // Check return status
@@ -288,7 +290,7 @@ void _ux_hcd_xhci_host_timer_function(void *arg)
             {
                 // The port_status value is valid and will tell us if there is
                 // a device attached\detached on the downstream port.
-                if (port_status & UX_PS_CCS) {       
+                if (port_status & UX_PS_CCS) {
                     hcd_event_device_attach(port_index, false);
                 } else {
                     hcd_event_device_remove(port_index, false);
@@ -308,7 +310,7 @@ uint32_t  _ux_hcd_xhci_initialize(UX_HCD *hcd)
     uint32_t     xhci_reg;
     uint32_t      ret;
 #ifdef DEBUG
-    printf("xhci_initialize\n\r");
+    printf("xhci_initialize\r\n");
 #endif
     /* The controller initialized here is of XHCI type.  */
     hcd -> ux_hcd_controller_type =  UX_XHCI_CONTROLLER;
