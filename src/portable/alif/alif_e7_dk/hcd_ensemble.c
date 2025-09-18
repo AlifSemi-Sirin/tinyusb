@@ -35,6 +35,105 @@
 #include "clk.h"
 #include "power.h"
 
+// Max number of endpoints application can open, can be larger than DWC2_CHANNEL_COUNT_MAX
+#ifndef CFG_TUH_DWC2_ENDPOINT_MAX
+#define CFG_TUH_DWC2_ENDPOINT_MAX 16
+#endif
+
+#define DWC2_CHANNEL_COUNT_MAX    16 // absolute max channel count
+TU_VERIFY_STATIC(CFG_TUH_DWC2_ENDPOINT_MAX <= 255, "currently only use 8-bit for index");
+
+enum {
+  HCD_XFER_ERROR_MAX = 3
+};
+
+enum {
+  HCD_XFER_PERIOD_SPLIT_NYET_MAX = 3
+};
+
+//--------------------------------------------------------------------
+//
+//--------------------------------------------------------------------
+
+typedef union {
+  uint32_t value;
+  struct TU_ATTR_PACKED {
+    uint32_t ep_size         : 11; // 0..10 Maximum packet size
+    uint32_t ep_num          :  4; // 11..14 Endpoint number
+    uint32_t ep_dir          :  1; // 15 Endpoint direction
+    uint32_t rsv16           :  1; // 16 Reserved
+    uint32_t low_speed_dev   :  1; // 17 Low-speed device
+    uint32_t ep_type         :  2; // 18..19 Endpoint type
+    uint32_t err_multi_count :  2; // 20..21 Error (splitEn = 1) / Multi (SplitEn = 0)  count
+    uint32_t dev_addr        :  7; // 22..28 Device address
+    uint32_t odd_frame       :  1; // 29 Odd frame
+    uint32_t disable         :  1; // 30 Channel disable
+    uint32_t enable          :  1; // 31 Channel enable
+  };
+} dwc2_channel_char_t;
+TU_VERIFY_STATIC(sizeof(dwc2_channel_char_t) == 4, "incorrect size");
+
+typedef union {
+  uint32_t value;
+  struct TU_ATTR_PACKED {
+    uint32_t hub_port    :  7; // 0..6 Hub port number
+    uint32_t hub_addr    :  7; // 7..13 Hub address
+    uint32_t xact_pos    :  2; // 14..15 Transaction position
+    uint32_t split_compl :  1; // 16 Split completion
+    uint32_t rsv17_30    : 14; // 17..30 Reserved
+    uint32_t split_en    :  1; // 31 Split enable
+  };
+} dwc2_channel_split_t;
+TU_VERIFY_STATIC(sizeof(dwc2_channel_split_t) == 4, "incorrect size");
+
+// Host driver struct for each opened endpoint
+typedef struct {
+  union {
+    uint32_t hcchar;
+    dwc2_channel_char_t hcchar_bm;
+  };
+  union {
+    uint32_t hcsplt;
+    dwc2_channel_split_t hcsplt_bm;
+  };
+
+  struct TU_ATTR_PACKED {
+    uint32_t uframe_interval : 18; // micro-frame interval
+    uint32_t speed           : 2;
+    uint32_t next_pid        : 2; // PID for next transfer
+    uint32_t next_do_ping    : 1; // Do PING for next transfer if possible (highspeed OUT)
+    // uint32_t : 9;
+  };
+
+  uint32_t uframe_countdown; // micro-frame count down to transfer for periodic, only need 18-bit
+
+  uint8_t* buffer;
+  uint16_t buflen;
+} hcd_endpoint_t;
+
+// Additional info for each channel when it is active
+typedef struct {
+  volatile bool allocated;
+  uint8_t ep_id;
+  struct TU_ATTR_PACKED {
+    uint8_t err_count : 3;
+    uint8_t period_split_nyet_count : 3;
+    uint8_t halted_nyet : 1;
+  };
+  uint8_t result;
+
+  uint16_t xferred_bytes;  // bytes that accumulate transferred though USB bus for the whole hcd_edpt_xfer(), which can
+                           // be composed of multiple channel_xfer_start() (retry with NAK/NYET)
+  uint16_t fifo_bytes;     // bytes written/read from/to FIFO (may not be transferred on USB bus).
+} hcd_xfer_t;
+
+typedef struct {
+  hcd_xfer_t xfer[DWC2_CHANNEL_COUNT_MAX];
+  hcd_endpoint_t edpt[CFG_TUH_DWC2_ENDPOINT_MAX];
+} hcd_data_t;
+
+hcd_data_t _hcd_data;
+
 #if 1
 // USB Registers Access Types
 #define _rw volatile uint32_t
@@ -63,6 +162,33 @@ volatile struct {
     };
 } *host_ugbl = (void *) (USB_BASE + 0xC110);
 #endif
+
+
+// Allocate a new endpoint
+TU_ATTR_ALWAYS_INLINE static inline uint8_t edpt_alloc(void) {
+  for (uint32_t i = 0; i < CFG_TUH_DWC2_ENDPOINT_MAX; i++) {
+    hcd_endpoint_t* edpt = &_hcd_data.edpt[i];
+    if (edpt->hcchar_bm.enable == 0) {
+      tu_memclr(edpt, sizeof(hcd_endpoint_t));
+      edpt->hcchar_bm.enable = 1;
+      return i;
+    }
+  }
+  return TUSB_INDEX_INVALID_8;
+}
+
+// Find a endpoint that is opened previously with hcd_edpt_open()
+// Note: EP0 is bidirectional
+TU_ATTR_ALWAYS_INLINE static inline uint8_t edpt_find_opened(uint8_t dev_addr, uint8_t ep_num, uint8_t ep_dir) {
+  for (uint8_t i = 0; i < (uint8_t)CFG_TUH_DWC2_ENDPOINT_MAX; i++) {
+    const dwc2_channel_char_t* hcchar_bm = &_hcd_data.edpt[i].hcchar_bm;
+    if (hcchar_bm->enable && hcchar_bm->dev_addr == dev_addr &&
+        hcchar_bm->ep_num == ep_num && (ep_num == 0 || hcchar_bm->ep_dir == ep_dir)) {
+      return i;
+    }
+  }
+  return TUSB_INDEX_INVALID_8;
+}
 
 //--------------------------------------------------------------------+
 // Controller API
@@ -171,7 +297,30 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
         );
 #endif
 
+#if 0 //TODO
+  UX_XHCI_TRB *event;
+  event = xhci->event_ring->dequeue;
+
+  if (((event->event_cmd.flags) & TRB_TYPE_BITMASK) == TRB_TRANSFER)
+  {
+      uint32_t trb_comp_code = GET_COMP_CODE((event->trans_event.transfer_len));
+      uint32_t slot_id = TRB_TO_SLOT_ID((event->trans_event.flags));
+      int32_t ep_index = TRB_TO_EP_ID((event->trans_event.flags)) - 1;
+
+      xfer_result_t xfer_result = trb_comp_code + XFER_RESULT_SUCCESS - COMP_SUCCESS;
+      printf("trb_comp_code=%d, xfer_result=%d, len=%d, flags=0x%lx, slot_id=%u, ep_index=%d\r\n",
+             trb_comp_code, xfer_result, EVENT_TRB_LEN(event->trans_event.transfer_len),
+             event->trans_event.flags, slot_id, ep_index);
+
+      //hcd_event_xfer_complete(hcchar.dev_addr, ep_addr, xfer->xferred_bytes, (xfer_result_t)xfer->result, in_isr);
+      hcd_event_xfer_complete(0, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+  }
+
+#endif
+
+#if 1
   _ux_xhci_event_irq_handler(hcd_xhci);
+#endif
 }
 
 // Enable USB interrupt
@@ -478,6 +627,48 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   tuh_bus_info_t bus_info;
   tuh_bus_info_get(dev_addr, &bus_info);
 
+#if 1
+  // find a free endpoint
+  const uint8_t ep_id = edpt_alloc();
+  TU_ASSERT(ep_id < CFG_TUH_DWC2_ENDPOINT_MAX);
+  hcd_endpoint_t* edpt = &_hcd_data.edpt[ep_id];
+
+  dwc2_channel_char_t* hcchar_bm = &edpt->hcchar_bm;
+  hcchar_bm->ep_size         = tu_edpt_packet_size(ep_desc);
+  hcchar_bm->ep_num          = tu_edpt_number(ep_desc->bEndpointAddress);
+  hcchar_bm->ep_dir          = tu_edpt_dir(ep_desc->bEndpointAddress);
+  hcchar_bm->low_speed_dev   = (bus_info.speed == TUSB_SPEED_LOW) ? 1 : 0;
+  hcchar_bm->ep_type         = ep_desc->bmAttributes.xfer; // ep_type matches TUSB_XFER_*
+  hcchar_bm->err_multi_count = 0;
+  hcchar_bm->dev_addr        = dev_addr;
+  hcchar_bm->odd_frame       = 0;
+  hcchar_bm->disable         = 0;
+  hcchar_bm->enable          = 1;
+
+  dwc2_channel_split_t* hcsplt_bm = &edpt->hcsplt_bm;
+  hcsplt_bm->hub_port        = bus_info.hub_port;
+  hcsplt_bm->hub_addr        = bus_info.hub_addr;
+  hcsplt_bm->xact_pos        = 0;
+  hcsplt_bm->split_compl     = 0;
+//  hcsplt_bm->split_en        = (rh_speed == TUSB_SPEED_HIGH && bus_info.speed != TUSB_SPEED_HIGH) ? 1 : 0;
+
+  edpt->speed = bus_info.speed;
+//  edpt->next_pid = HCTSIZ_PID_DATA0;
+  if (ep_desc->bmAttributes.xfer == TUSB_XFER_ISOCHRONOUS) {
+      edpt->uframe_interval = 1 << (ep_desc->bInterval - 1);
+      if (bus_info.speed == TUSB_SPEED_FULL) {
+          edpt->uframe_interval <<= 3;
+      }
+  } else if (ep_desc->bmAttributes.xfer == TUSB_XFER_INTERRUPT) {
+      if (bus_info.speed == TUSB_SPEED_HIGH) {
+          edpt->uframe_interval = 1 << (ep_desc->bInterval - 1);
+      } else {
+          edpt->uframe_interval = ep_desc->bInterval << 3;
+      }
+  }
+#endif
+
+#if 1
   if (ep_desc->bEndpointAddress == 0) {
     printf("_ux_host_stack_new_device_get() \r\n");
     UX_DEVICE  *device = _ux_host_stack_new_device_get();
@@ -537,8 +728,9 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
           return true;
     }
   }
+#endif
 
-  return false;
+  return true;
 }
 
 bool hcd_edpt_close(uint8_t rhport, uint8_t daddr, uint8_t ep_addr) {
@@ -557,12 +749,33 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   (void) buffer;
   (void) buflen;
 
-  printf("Called %s(%u %u %u %p %u)", __FUNCTION__, rhport, dev_addr, ep_addr, buffer, buflen);
+  //dwc2_regs_t* dwc2 = DWC2_REG(rhport);
+  const uint8_t ep_num = tu_edpt_number(ep_addr);
+  const uint8_t ep_dir = tu_edpt_dir(ep_addr);
+
+  uint8_t ep_id = edpt_find_opened(dev_addr, ep_num, ep_dir);
+
+  printf("Called %s(%u %u 0x%x %p %u) ep_id=%u", __FUNCTION__, rhport, dev_addr, ep_addr, buffer, buflen, ep_id);
   for (int i = 0; i < buflen; i++)
   {
       printf(" %02x", buffer[i]);
   }
   printf("\n");
+
+
+  TU_ASSERT(ep_id < CFG_TUH_DWC2_ENDPOINT_MAX);
+  hcd_endpoint_t* edpt = &_hcd_data.edpt[ep_id];
+
+  edpt->buffer = buffer;
+  edpt->buflen = buflen;
+
+  if (ep_num == 0) {
+      // update ep_dir since control endpoint can switch direction
+      edpt->hcchar_bm.ep_dir = ep_dir;
+  }
+
+//TODO: transfer data
+// fill TRB and set DOORBELL
 
   return true;
 }
@@ -589,8 +802,15 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   (void) dev_addr;
   (void) setup_packet;
 
+  bool ret = false;
+
   printf("Called %s(%u %u %p)\r\n", __FUNCTION__, rhport, dev_addr, setup_packet);
 
+#if 1
+  ret = hcd_edpt_xfer(rhport, dev_addr, 0, (uint8_t*)(uintptr_t) setup_packet, 8);
+#endif
+
+#if 1
   // Retrieve the pointer to the control endpoint.
   UX_DEVICE       *device = _created_device;
   UX_ENDPOINT     *control_endpoint =  &device -> ux_device_control_endpoint;
@@ -641,6 +861,9 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   _ux_utility_memory_free(descriptor);
 
   return false;
+#else
+  return ret;
+#endif
 }
 
 // clear stall, data toggle is also reset to DATA0
