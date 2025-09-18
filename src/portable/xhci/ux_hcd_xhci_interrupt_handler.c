@@ -138,6 +138,7 @@ int32_t _ux_hcd_xhci_handle_events(UX_HCD_XHCI *xhci)
 #ifdef DEBUG
             printf("TRB_TRANSFER \r\n");
 #endif
+#if 0
             {
                 uint32_t trb_comp_code = GET_COMP_CODE((event->trans_event.transfer_len));
                 uint32_t slot_id = TRB_TO_SLOT_ID((event->trans_event.flags));
@@ -151,6 +152,7 @@ int32_t _ux_hcd_xhci_handle_events(UX_HCD_XHCI *xhci)
                 //hcd_event_xfer_complete(hcchar.dev_addr, ep_addr, xfer->xferred_bytes, (xfer_result_t)xfer->result, in_isr);
                 hcd_event_xfer_complete(0, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
             }
+#endif
             ret = handle_transfer_event(xhci, &event->trans_event);
             if (ret >= 0)
                 update_ptrs = 0;

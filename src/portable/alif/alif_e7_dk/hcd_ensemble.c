@@ -297,12 +297,74 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
         );
 #endif
 
-#if 0 //TODO
+  UX_HCD_XHCI *xhci = hcd_xhci;
+
+#if 1
+  UX_XHCI_TRB *event_ring_deq;
+  uint64_t reg_64;
+  uint32_t reg;
+  uint32_t irq_pending;
+  if (xhci == NULL)
+      return;
+  /* Check if the xHC generated the interrupt, or the irq is shared */
+  reg = xhci->op_regs->USBSTS;
+  if (reg == ~(uint32_t)0)
+  {
+      _ux_hcd_xhci_hc_died(xhci);
+      return;
+  }
+  if (!(reg & STS_EINT))
+      return;
+  if (reg & STS_FATAL)
+  {
+#ifdef DEBUG
+      printf("WARNING: Host System Error\n");
+#endif
+      _ux_hcd_xhci_halt(xhci);
+      return;
+  }
+  /*
+   * Clear the op reg interrupt status first,
+   * so we can receive interrupts from other MSI-X interrupters.
+   * Write 1 to clear the interrupt status.
+   */
+  reg |= STS_EINT;
+  xhci->op_regs->USBSTS = reg;
+  /* Read the interrupter Set Register  */
+  irq_pending = xhci->run_regs->ir_set[0].IMAN;
+  irq_pending |= IMAN_IP;
+  xhci->run_regs->ir_set[0].IMAN = irq_pending;
+#endif
+
+#if 1
+  if ((xhci->xhc_state & UX_XHCI_STATE_DYING) || (xhci->xhc_state & UX_XHCI_STATE_HALTED))
+  {
+#ifdef DEBUG
+      printf("xHCI dying, ignoring interrupt. ""Shouldn't IRQs be disabled?\n");
+#endif
+      /* Clear the event handler busy flag (RW1C);
+       * the event ring should be empty.
+       */
+      reg_64 = xhci->run_regs->ir_set[0].ERDP;
+      xhci->run_regs->ir_set[0].ERDP = reg_64 | ERST_EHB;
+      return;
+  }
+
+#endif
+  event_ring_deq = xhci->event_ring->dequeue;
+
+
+#if 1 //TODO
   UX_XHCI_TRB *event;
   event = xhci->event_ring->dequeue;
+//  RTSS_InvalidateDCache_by_Addr(&event->event_cmd, sizeof(event->event_cmd));
 
-  if (((event->event_cmd.flags) & TRB_TYPE_BITMASK) == TRB_TRANSFER)
+  if (((event->event_cmd.flags) & TRB_TYPE_BITMASK) == TRB_TYPE(TRB_TRANSFER))
   {
+#ifdef DEBUG
+      printf("TRB_TRANSFER \r\n");
+#endif
+
       uint32_t trb_comp_code = GET_COMP_CODE((event->trans_event.transfer_len));
       uint32_t slot_id = TRB_TO_SLOT_ID((event->trans_event.flags));
       int32_t ep_index = TRB_TO_EP_ID((event->trans_event.flags)) - 1;
@@ -312,14 +374,38 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
              trb_comp_code, xfer_result, EVENT_TRB_LEN(event->trans_event.transfer_len),
              event->trans_event.flags, slot_id, ep_index);
 
-      //hcd_event_xfer_complete(hcchar.dev_addr, ep_addr, xfer->xferred_bytes, (xfer_result_t)xfer->result, in_isr);
-      hcd_event_xfer_complete(0, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
-  }
+      TU_ASSERT(ep_index < CFG_TUH_DWC2_ENDPOINT_MAX,);
+      hcd_endpoint_t* edpt = &_hcd_data.edpt[ep_index];
+      dwc2_channel_char_t* hcchar_bm = &edpt->hcchar_bm;
 
+      //TODO: for now ep_index set by USBX code. Need to set it in hcd_edpt_xfer()
+      uint8_t ep_addr = tu_edpt_addr(hcchar_bm->ep_num, hcchar_bm->ep_dir);
+      printf("dev_addr=%d, ep_addr=%d\r\n", hcchar_bm->dev_addr, ep_addr);
+      //hcd_event_xfer_complete(hcchar.dev_addr, ep_addr, xfer->xferred_bytes, (xfer_result_t)xfer->result, in_isr);
+      //hcd_event_xfer_complete(0, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+      hcd_event_xfer_complete(hcchar_bm->dev_addr, ep_addr, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+  }
+//  else
 #endif
 
 #if 1
-  _ux_xhci_event_irq_handler(hcd_xhci);
+  {
+  //_ux_xhci_event_irq_handler(hcd_xhci);
+      if(_ux_hcd_xhci_handle_events(xhci))
+          _ux_hcd_xhci_update_erst_dequeue(xhci, event_ring_deq);
+
+  }
+#else
+  {
+      /* TODO: handle
+        TRB_PORT_STATUS
+        TRB_COMPLETION
+        TRB_ENABLE_SLOT
+        TRB_ADDR_DEV
+      */
+
+      //TODO: _ux_hcd_xhci_update_erst_dequeue(xhci, event_ring_deq);
+  }
 #endif
 }
 
