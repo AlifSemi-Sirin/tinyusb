@@ -44,14 +44,14 @@ int32_t _ux_hcd_xhci_control_transfer_request(UX_HCD_XHCI *xhci, UX_TRANSFER *ur
         uint32_t ep_index)
 {
     UX_XHCI_RING *ep_ring;
-    int32_t num_trbs;
-    int32_t ret;
-    UX_XHCI_GENERIC_TRB *start_trb;
-    UX_XHCI_TRB_INFO  trb_info;
-    int32_t start_cycle;
-    uint32_t field;
     UX_URB_PRIV *urb_priv;
     UX_XHCI_TD *td;
+    UX_XHCI_TRB_INFO  trb_info;
+    UX_XHCI_GENERIC_TRB *start_trb;
+    int32_t num_trbs;
+    int32_t start_cycle;
+    int32_t ret;
+    uint32_t field;
     UX_XHCI_VIRT_EP *ep;
     ep = &xhci->devs[slot_id]->eps[ep_index];
     ep_ring = ep->ring;
@@ -88,7 +88,7 @@ int32_t _ux_hcd_xhci_control_transfer_request(UX_HCD_XHCI *xhci, UX_TRANSFER *ur
     /* Immediate Data (IDT).bit and SETUP TRB  */
     field |= TRB_IDT | TRB_TYPE(TRB_SETUP);
     if (start_cycle == 0)
-        field |= 0x1;
+        field |= TRB_CYCLE;
 
     /* xHCI 1.0/1.1 6.4.1.2.1: Transfer Type field */
     if (xhci->hci_version >= 0x100)

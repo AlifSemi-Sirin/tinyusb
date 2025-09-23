@@ -364,6 +364,8 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 #ifdef DEBUG
       printf("TRB_TRANSFER \r\n");
 #endif
+//      _ux_utility_event_flags_set(&CONTROL_EP_FLAG, UX_XHCI_CONTROL_EP_EVENT, TX_OR);
+
 
       uint32_t trb_comp_code = GET_COMP_CODE((event->trans_event.transfer_len));
       uint32_t slot_id = TRB_TO_SLOT_ID((event->trans_event.flags));
@@ -378,16 +380,22 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
       hcd_endpoint_t* edpt = &_hcd_data.edpt[ep_index];
       dwc2_channel_char_t* hcchar_bm = &edpt->hcchar_bm;
 
-      //TODO: for now ep_index set by USBX code. Need to set it in hcd_edpt_xfer()
+      //TODO: for now ep_index set by USBX code. Need to set it in hcd_edpt_xfer() <- currently this variant
       //      or use ep_index directly without tu_edpt_addr()
       //TODO: also get dev_addr from slot_id
       uint8_t ep_addr = tu_edpt_addr(hcchar_bm->ep_num, hcchar_bm->ep_dir);
       printf("dev_addr=%d, ep_addr=%d\r\n", hcchar_bm->dev_addr, ep_addr);
       //hcd_event_xfer_complete(hcchar.dev_addr, ep_addr, xfer->xferred_bytes, (xfer_result_t)xfer->result, in_isr);
       //hcd_event_xfer_complete(0, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
-      hcd_event_xfer_complete(hcchar_bm->dev_addr, ep_addr, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+      //hcd_event_xfer_complete(hcchar_bm->dev_addr, ep_addr, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+      //FIXME: may be we shall pass original_length - EVENT_TRB_LEN(event->trans_event.transfer_len) ?
+      hcd_event_xfer_complete(0, ep_index, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+
+      //TODO: call to
+      process_ctrl_td(xhci, td, ep_trb, event, ep, &status);
+
   }
-//  else
+  //else //FIXME: this else removed for now because _ux_hcd_xhci_control_transfer_request() waits for complete flag
 #endif
 
 #if 1
@@ -819,9 +827,11 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
           return true;
     }
   }
-#endif
 
+  return false;
+#else
   return true;
+#endif
 }
 
 bool hcd_edpt_close(uint8_t rhport, uint8_t daddr, uint8_t ep_addr) {
@@ -840,13 +850,21 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   (void) buffer;
   (void) buflen;
 
+  //TODO: get it from dev_addr
+  UX_HCD_XHCI *xhci = hcd_xhci;
+  const int32_t slot_id = xhci->slot_id;
+  const uint32_t ep_index = ((ep_addr == TUSB_DIR_IN_MASK) ? 0x00 : ep_addr);
+  //FIXME: in the USBX there is one ep_index = 0 for all 3 messages in the get_descriptor request
+  //       but in the tinyUSB second call is IN request with addr 0x80
+
+
   //dwc2_regs_t* dwc2 = DWC2_REG(rhport);
   const uint8_t ep_num = tu_edpt_number(ep_addr);
   const uint8_t ep_dir = tu_edpt_dir(ep_addr);
 
   uint8_t ep_id = edpt_find_opened(dev_addr, ep_num, ep_dir);
 
-  printf("Called %s(%u %u 0x%x %p %u) ep_id=%u", __FUNCTION__, rhport, dev_addr, ep_addr, buffer, buflen, ep_id);
+  printf("Called %s(%u %u 0x%x %p %u) ep_id=%u, slot_id=%ld", __FUNCTION__, rhport, dev_addr, ep_addr, buffer, buflen, ep_id, slot_id);
   for (int i = 0; i < buflen; i++)
   {
       printf(" %02x", buffer[i]);
@@ -881,6 +899,97 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
     6. ?What about TDs? (Transfer Descriptors)
 */
 
+  UX_XHCI_RING *ep_ring;
+  UX_URB_PRIV *urb_priv;
+  UX_XHCI_TD *td;
+  UX_XHCI_TRB_INFO  trb_info;
+  UX_XHCI_GENERIC_TRB *start_trb;
+  int32_t num_trbs;
+  int32_t start_cycle;
+  int32_t ret;
+  uint32_t field;
+  UX_XHCI_VIRT_EP *ep;
+  ep = &xhci->devs[slot_id]->eps[ep_index];
+  ep_ring = ep->ring;
+  if (!ep_ring)
+  {
+      return -1;
+  }
+
+  num_trbs = 1;
+  printf("ep_ring=%p, enqueue=%p, dequeue=%p\r\n", ep_ring, ep_ring->enqueue, ep_ring->dequeue);
+
+  // Retrieve the pointer to the control endpoint.
+  UX_DEVICE       *device = _created_device;
+  UX_ENDPOINT     *control_endpoint =  &device -> ux_device_control_endpoint;
+  UX_TRANSFER     *urb =  &control_endpoint -> ux_endpoint_transfer_request;
+  uint32_t        num_tds = 1;
+
+  urb_priv = _ux_utility_memory_allocate(UX_NO_ALIGN, UX_REGULAR_MEMORY, sizeof(*urb_priv) + (sizeof(UX_XHCI_TD) * num_tds));
+  if (!urb_priv)
+  {
+#ifdef DEBUG
+      printf("urb_priv alloc failed %d \n",sizeof(UX_XHCI_TD) * num_tds);
+#endif
+      return -1;
+  }
+  urb_priv->num_tds = num_tds;
+  urb_priv->num_tds_done = 0;
+  urb->hcpriv = urb_priv;
+
+  ret = prepare_transfer(xhci, xhci->devs[slot_id], ep_index, xhci->stream_id, num_trbs, urb, 0);
+  if (ret < 0)
+  {
+      return false;
+  }
+//  urb_priv = urb->hcpriv;
+  td = &urb_priv->td[0];
+  /*
+   * Don't give the first TRB to the hardware (by toggling the cycle bit)
+   * until we've finished creating all the other TRBs.  The ring's cycle
+   * state may change as we enqueue the other TRBs, so save it too.
+   */
+  start_trb = &ep_ring->enqueue->generic;
+  start_cycle = ep_ring->cycle_state;
+  field = 0;
+  /* Immediate Data (IDT).bit and SETUP TRB  */
+  field |= TRB_IDT | TRB_TYPE(TRB_SETUP);
+  if (start_cycle == 0)
+      field |= TRB_CYCLE;
+
+  /* xHCI 1.0/1.1 6.4.1.2.1: Transfer Type field */
+  if (xhci->hci_version >= 0x100)
+  {
+      if (urb->ux_transfer_request_requested_length > 0)
+      {
+          if ((urb -> ux_transfer_request_type & UX_REQUEST_DIRECTION) == UX_REQUEST_IN)
+              field |= TRB_TX_TYPE(TRB_DATA_IN);
+          else
+              field |= TRB_TX_TYPE(TRB_DATA_OUT);
+      }
+  }
+
+#if 1
+  if ((buflen <= 8) && (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT))
+  {
+    memcpy(&trb_info, buffer, buflen);
+  }
+  else
+  {
+    trb_info.low_address = LocalToGlobal(buffer);
+    trb_info.high_address = 0;
+  }
+#else
+  trb_info.low_address = urb -> ux_transfer_request_type | urb -> ux_transfer_request_function << 8
+                         | urb -> ux_transfer_request_value << 16;
+  trb_info.high_address = urb -> ux_transfer_request_index | urb -> ux_transfer_request_requested_length << 16;
+#endif
+  trb_info.size =  TRB_LEN(buflen) | TRB_INTR_TARGET(0);
+  trb_info.cntrl_field = field | TRB_IOC;
+  /* Queue the SETUP Stage TRB   */
+  queue_trb(xhci, ep_ring, false, &trb_info);
+
+  giveback_first_trb(xhci, slot_id, ep_index, 0, start_cycle, start_trb);
 
   return true;
 }
@@ -915,7 +1024,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   ret = hcd_edpt_xfer(rhport, dev_addr, 0, (uint8_t*)(uintptr_t) setup_packet, 8);
 #endif
 
-#if 1
+#if 0
   // Retrieve the pointer to the control endpoint.
   UX_DEVICE       *device = _created_device;
   UX_ENDPOINT     *control_endpoint =  &device -> ux_device_control_endpoint;
@@ -949,7 +1058,9 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
     // Pointer to the HCD.
     UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
     // Send the command to the controller.
-    unsigned int status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_TRANSFER_REQUEST, transfer_request);
+
+    unsigned int status =  _ux_hcd_xhci_transfer_request(hcd_xhci, transfer_request);
+    //unsigned int status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_TRANSFER_REQUEST, transfer_request);
 
     // Check for correct transfer and entire descriptor returned.
     if ((status == UX_SUCCESS) && (transfer_request -> ux_transfer_request_actual_length == 8)) {
