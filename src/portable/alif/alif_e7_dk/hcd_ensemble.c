@@ -379,6 +379,8 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
       dwc2_channel_char_t* hcchar_bm = &edpt->hcchar_bm;
 
       //TODO: for now ep_index set by USBX code. Need to set it in hcd_edpt_xfer()
+      //      or use ep_index directly without tu_edpt_addr()
+      //TODO: also get dev_addr from slot_id
       uint8_t ep_addr = tu_edpt_addr(hcchar_bm->ep_num, hcchar_bm->ep_dir);
       printf("dev_addr=%d, ep_addr=%d\r\n", hcchar_bm->dev_addr, ep_addr);
       //hcd_event_xfer_complete(hcchar.dev_addr, ep_addr, xfer->xferred_bytes, (xfer_result_t)xfer->result, in_isr);
@@ -752,6 +754,9 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
           edpt->uframe_interval = ep_desc->bInterval << 3;
       }
   }
+
+  //TODO: if this is new device, need to send TRB_ENABLE_SLOT command
+  //      to allocate slot_id
 #endif
 
 #if 1
@@ -862,6 +867,20 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
 
 //TODO: transfer data
 // fill TRB and set DOORBELL
+
+/*
+    Required data:
+    1. ring for current slot_id and current endpoint.
+    2. slot_id, should be allocated in hcd_edpt_open(), then we can get it using dev_addr
+       Number of slots is 256 in USBX and 64 in the alif E7 device.
+    3. USBX code has fixed array of 31 endpoints for each device
+    4. Each enpoint contains the ring which consist from one or more segments (default 2)
+       Number of segments can be incremented if required, see _ux_hcd_xhci_ring_expansion()
+    5. Each segment has 256 TRBs. The last TRB in each segment has a link to the first TRB
+       of the next segment, see _ux_hcd_xhci_link_segments()
+    6. ?What about TDs? (Transfer Descriptors)
+*/
+
 
   return true;
 }
