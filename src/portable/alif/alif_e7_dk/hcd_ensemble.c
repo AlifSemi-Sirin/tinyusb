@@ -1061,22 +1061,27 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   UX_DEVICE       *device = _created_device;
   UX_ENDPOINT     *control_endpoint =  &device -> ux_device_control_endpoint;
   UX_TRANSFER     *transfer_request =  &control_endpoint -> ux_endpoint_transfer_request;
+  unsigned int request_length = setup_packet[6] | (setup_packet[7] << 8); //8;
 
   // Need to allocate memory for the descriptor
-  unsigned char * descriptor =  _ux_utility_memory_allocate(UX_SAFE_ALIGN, UX_CACHE_SAFE_MEMORY,
-                                UX_DEVICE_DESCRIPTOR_LENGTH);
-  if (descriptor == UX_NULL)
-    return(UX_MEMORY_INSUFFICIENT);
+  unsigned char * descriptor = UX_NULL;
+  if (request_length > 0)
+  {
+      descriptor = _ux_utility_memory_allocate(UX_SAFE_ALIGN, UX_CACHE_SAFE_MEMORY,
+                                request_length);
+      if (descriptor == UX_NULL)
+          return(UX_MEMORY_INSUFFICIENT);
+  }
 
   // Create a transfer_request for the GET_DESCRIPTOR request. The first transfer_request asks
   // for the first 8 bytes only. This way we will know the real MaxPacketSize
   // value for the control endpoint.
   transfer_request -> ux_transfer_request_data_pointer =      descriptor;
-  transfer_request -> ux_transfer_request_requested_length =  8;
-  transfer_request -> ux_transfer_request_function =          UX_GET_DESCRIPTOR;
-  transfer_request -> ux_transfer_request_type =              UX_REQUEST_IN | UX_REQUEST_TYPE_STANDARD | UX_REQUEST_TARGET_DEVICE;
-  transfer_request -> ux_transfer_request_value =             UX_DEVICE_DESCRIPTOR_ITEM << 8;
-  transfer_request -> ux_transfer_request_index =             0;
+  transfer_request -> ux_transfer_request_requested_length =  request_length; //8;
+  transfer_request -> ux_transfer_request_function =          setup_packet[1]; //UX_GET_DESCRIPTOR;
+  transfer_request -> ux_transfer_request_type =              setup_packet[0]; //UX_REQUEST_IN | UX_REQUEST_TYPE_STANDARD | UX_REQUEST_TARGET_DEVICE;
+  transfer_request -> ux_transfer_request_value =             setup_packet[2] | (setup_packet[3] << 8); //UX_DEVICE_DESCRIPTOR_ITEM << 8;
+  transfer_request -> ux_transfer_request_index =             setup_packet[4] | (setup_packet[5] << 8); //0;
 
   // Send request to HCD layer.
   //unsigned int status =  _ux_host_stack_transfer_request(transfer_request);
@@ -1095,11 +1100,17 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
     //unsigned int status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_TRANSFER_REQUEST, transfer_request);
 
     // Check for correct transfer and entire descriptor returned.
-    if ((status == UX_SUCCESS) && (transfer_request -> ux_transfer_request_actual_length == 8)) {
+    if ((status == UX_SUCCESS) &&
+        (transfer_request -> ux_transfer_request_actual_length == request_length))
+    {
       // Print descriptor
-      printf("descriptor: %2x %2x %2x %2x %2x %2x %2x %2x\r\n",
-      descriptor[0],descriptor[1],descriptor[2],descriptor[3],
-      descriptor[4],descriptor[5],descriptor[6],descriptor[7]);
+        printf("response:");
+
+        for (int i = 0; i < request_length; i++)
+        {
+            printf(" %02x", descriptor[i]);
+        }
+        printf("\r\n");
 
       return true;
     }
