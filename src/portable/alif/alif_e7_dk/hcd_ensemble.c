@@ -376,6 +376,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
              trb_comp_code, xfer_result, EVENT_TRB_LEN(event->trans_event.transfer_len),
              event->trans_event.flags, slot_id, ep_index);
 
+#if 1
       TU_ASSERT(ep_index < CFG_TUH_DWC2_ENDPOINT_MAX,);
       hcd_endpoint_t* edpt = &_hcd_data.edpt[ep_index];
       dwc2_channel_char_t* hcchar_bm = &edpt->hcchar_bm;
@@ -385,15 +386,34 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
       //TODO: also get dev_addr from slot_id
       uint8_t ep_addr = tu_edpt_addr(hcchar_bm->ep_num, hcchar_bm->ep_dir);
       printf("dev_addr=%d, ep_addr=%d\r\n", hcchar_bm->dev_addr, ep_addr);
+#endif
       //hcd_event_xfer_complete(hcchar.dev_addr, ep_addr, xfer->xferred_bytes, (xfer_result_t)xfer->result, in_isr);
       //hcd_event_xfer_complete(0, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
       //hcd_event_xfer_complete(hcchar_bm->dev_addr, ep_addr, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
       //FIXME: may be we shall pass original_length - EVENT_TRB_LEN(event->trans_event.transfer_len) ?
       hcd_event_xfer_complete(0, ep_index, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
 
-      //TODO: call to
-      process_ctrl_td(xhci, td, ep_trb, event, ep, &status);
+#if 0
+    int32_t status = -1;
+    UX_XHCI_VIRT_DEVICE  *xdev;
+    UX_XHCI_VIRT_EP   *ep;
+    UX_XHCI_TD   *td = NULL;
 
+    xdev = xhci->devs[slot_id];
+    if (!xdev)
+    {
+#ifdef DEBUG
+        printf("ERROR Transfer event pointed to bad slot %u\n",slot_id);
+#endif
+        return;
+    }
+    ep = &xdev->eps[ep_index];
+
+      //TODO: call to
+      //process_ctrl_td(xhci, td, ep_trb, event, ep, &status);
+      //process_ctrl_td(xhci, td, NULL, &event->trans_event, ep, &status);
+      finish_td(xhci, td, event, ep, &status);
+#endif
   }
   //else //FIXME: this else removed for now because _ux_hcd_xhci_control_transfer_request() waits for complete flag
 #endif
@@ -871,7 +891,12 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   }
   printf("\n");
 
+#if 1
+    //FIXME: Fake event to simulate tusb flow
+    hcd_event_xfer_complete(0, ep_index, buflen, XFER_RESULT_SUCCESS, false);
+#endif
 
+#if 0
   TU_ASSERT(ep_id < CFG_TUH_DWC2_ENDPOINT_MAX);
   hcd_endpoint_t* edpt = &_hcd_data.edpt[ep_id];
 
@@ -990,7 +1015,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   queue_trb(xhci, ep_ring, false, &trb_info);
 
   giveback_first_trb(xhci, slot_id, ep_index, 0, start_cycle, start_trb);
-
+#endif
   return true;
 }
 
@@ -1020,11 +1045,11 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
   printf("Called %s(%u %u %p)\r\n", __FUNCTION__, rhport, dev_addr, setup_packet);
 
-#if 1
+#if 0
   ret = hcd_edpt_xfer(rhport, dev_addr, 0, (uint8_t*)(uintptr_t) setup_packet, 8);
 #endif
 
-#if 0
+#if 1
   // Retrieve the pointer to the control endpoint.
   UX_DEVICE       *device = _created_device;
   UX_ENDPOINT     *control_endpoint =  &device -> ux_device_control_endpoint;
