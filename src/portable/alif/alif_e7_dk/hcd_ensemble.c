@@ -200,7 +200,9 @@ TU_ATTR_ALWAYS_INLINE static inline uint8_t edpt_find_opened(uint8_t dev_addr, u
 #define UX_REGULAR_MEMORY_SIZE            (79 * ONE_KB)
 #define UX_CACHE_SAFE_MEMORY_SIZE         (20 * ONE_KB)
 
+UX_HCD *_hcd;
 static uint8_t dma_buf[UX_DEMO_NS_SIZE]__attribute__((section("usb_dma_buf")));
+static bool _edpt_setup_request = false;
 
 // optional hcd configuration, called by tuh_configure()
 bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
@@ -212,7 +214,7 @@ bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
   return true;
 }
 
-UX_HCD *_hcd;
+
 
 // Initialize controller to host mode
 bool hcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
@@ -415,7 +417,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
       finish_td(xhci, td, event, ep, &status);
 #endif
   }
-  //else //FIXME: this else removed for now because _ux_hcd_xhci_control_transfer_request() waits for complete flag
+  else //FIXME: this else removed for now because _ux_hcd_xhci_control_transfer_request() waits for complete flag
 #endif
 
 #if 1
@@ -892,12 +894,12 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   }
   printf("\n");
 
-#if 1
+#if 0
     //FIXME: Fake event to simulate tusb flow
     hcd_event_xfer_complete(0, ep_index, buflen, XFER_RESULT_SUCCESS, false);
 #endif
 
-#if 0
+#if 1
   TU_ASSERT(ep_id < CFG_TUH_DWC2_ENDPOINT_MAX);
   hcd_endpoint_t* edpt = &_hcd_data.edpt[ep_id];
 
@@ -943,7 +945,8 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   }
 
   num_trbs = 1;
-  printf("ep_ring=%p, enqueue=%p, dequeue=%p\r\n", ep_ring, ep_ring->enqueue, ep_ring->dequeue);
+  printf("ep_ring=%p, enqueue=%p, dequeue=%p, cycle_state=%u, ep_addr=0x%x\r\n",
+         ep_ring, ep_ring->enqueue, ep_ring->dequeue, ep_ring->cycle_state, ep_addr);
 
   // Retrieve the pointer to the control endpoint.
   UX_DEVICE       *device = _created_device;
@@ -978,32 +981,70 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   start_trb = &ep_ring->enqueue->generic;
   start_cycle = ep_ring->cycle_state;
   field = 0;
-  /* Immediate Data (IDT).bit and SETUP TRB  */
-  field |= TRB_IDT | TRB_TYPE(TRB_SETUP);
+  if (_edpt_setup_request)
+  {
+      _edpt_setup_request = false;
+      /* SETUP TRB  */
+      //FIXME: only first packet shall be setup, other shall be DATA
+    field |= TRB_TYPE(TRB_SETUP);
+    /* Interrupt on completion */
+    field |= TRB_IOC;
+
+    /* xHCI 1.0/1.1 6.4.1.2.1: Transfer Type field */
+    if (xhci->hci_version >= 0x100)
+    {
+        if (buflen > 0) //(urb->ux_transfer_request_requested_length > 0)
+        {
+            //if ((urb -> ux_transfer_request_type & UX_REQUEST_DIRECTION) == UX_REQUEST_IN) == old variant
+            //if (tu_edpt_dir(ep_addr) == TUSB_DIR_IN) -- wrong variant
+            if ((buffer[0] & UX_REQUEST_DIRECTION) == UX_REQUEST_IN)
+                field |= TRB_TX_TYPE(TRB_DATA_IN);
+            else
+                field |= TRB_TX_TYPE(TRB_DATA_OUT);
+        }
+    }
+  }
+  else
+  {
+    field |= TRB_TYPE(TRB_DATA);
+  }
+
+
   if (start_cycle == 0)
       field |= TRB_CYCLE;
 
-  /* xHCI 1.0/1.1 6.4.1.2.1: Transfer Type field */
-  if (xhci->hci_version >= 0x100)
-  {
-      if (urb->ux_transfer_request_requested_length > 0)
-      {
-          if ((urb -> ux_transfer_request_type & UX_REQUEST_DIRECTION) == UX_REQUEST_IN)
-              field |= TRB_TX_TYPE(TRB_DATA_IN);
-          else
-              field |= TRB_TX_TYPE(TRB_DATA_OUT);
-      }
-  }
+
 
 #if 1
   if ((buflen <= 8) && (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT))
   {
+    /* Immediate Data (IDT).bit */
+    field |= TRB_IDT;
     memcpy(&trb_info, buffer, buflen);
   }
   else
   {
-    trb_info.low_address = LocalToGlobal(buffer);
-    trb_info.high_address = 0;
+      field |= TRB_DIR_IN;
+      /* Interrupt on short packet */
+      field |= TRB_ISP;
+      /* Interrupt on completion */
+      field |= TRB_IOC;
+
+      //field |= ep_ring->cycle_state;
+
+      void *addr = NULL;
+      if (buflen > 0)
+      {
+          //Use buffer from the allowed memory section
+          //TODO: free it after use
+        addr = _ux_utility_memory_allocate(UX_NO_ALIGN, UX_REGULAR_MEMORY, buflen);
+        if (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT)
+        {
+            memcpy(addr, buffer, buflen);
+        }
+      }
+      trb_info.low_address = LocalToGlobal(addr);
+      trb_info.high_address = 0;//LocalToGlobal(0);
   }
 #else
   trb_info.low_address = urb -> ux_transfer_request_type | urb -> ux_transfer_request_function << 8
@@ -1011,7 +1052,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   trb_info.high_address = urb -> ux_transfer_request_index | urb -> ux_transfer_request_requested_length << 16;
 #endif
   trb_info.size =  TRB_LEN(buflen) | TRB_INTR_TARGET(0);
-  trb_info.cntrl_field = field | TRB_IOC;
+  trb_info.cntrl_field = field;
   /* Queue the SETUP Stage TRB   */
   queue_trb(xhci, ep_ring, false, &trb_info);
 
@@ -1052,11 +1093,12 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   }
   printf("\r\n");
 
-#if 0
+#if 1
+  _edpt_setup_request = true;
   ret = hcd_edpt_xfer(rhport, dev_addr, 0, (uint8_t*)(uintptr_t) setup_packet, 8);
 #endif
 
-#if 1
+#if 0
   // Retrieve the pointer to the control endpoint.
   UX_DEVICE       *device = _created_device;
   UX_ENDPOINT     *control_endpoint =  &device -> ux_device_control_endpoint;
