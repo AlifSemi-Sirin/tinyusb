@@ -837,13 +837,14 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
       // Now control endpoint is ready, set state to running
       control_endpoint -> ux_endpoint_state = UX_ENDPOINT_RUNNING;
 
+#if 0
       tusb_time_delay_ms_api(UX_RH_ENUMERATION_RETRY_DELAY);
-
         /* Set the address of the device. The first time a USB device is
            accessed, it responds to the address 0. We need to change the address
            to a free device address between 1 and 127 ASAP.  */
         status =  _ux_host_stack_device_address_set(device);
         if (status == UX_SUCCESS)
+#endif
           return true;
     }
   }
@@ -1043,7 +1044,13 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
   bool ret = false;
 
-  printf("Called %s(%u %u %p)\r\n", __FUNCTION__, rhport, dev_addr, setup_packet);
+  printf("Called %s(%u %u %p)", __FUNCTION__, rhport, dev_addr, setup_packet);
+
+  for (int i = 0; i < 8; i++)
+  {
+      printf(" %02x", setup_packet[i]);
+  }
+  printf("\r\n");
 
 #if 0
   ret = hcd_edpt_xfer(rhport, dev_addr, 0, (uint8_t*)(uintptr_t) setup_packet, 8);
