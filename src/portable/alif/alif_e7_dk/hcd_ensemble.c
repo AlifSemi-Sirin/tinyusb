@@ -376,6 +376,8 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
              trb_comp_code, xfer_result, EVENT_TRB_LEN(event->trans_event.transfer_len),
              event->trans_event.flags, slot_id, ep_index);
 
+      //FIXME: force assert to prevent board crash laer
+      TU_ASSERT(trb_comp_code == 1,);
 #if 1
       TU_ASSERT(ep_index < CFG_TUH_DWC2_ENDPOINT_MAX,);
       hcd_endpoint_t* edpt = &_hcd_data.edpt[ep_index];
@@ -1057,6 +1059,8 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 #endif
 
 #if 1
+  tusb_time_delay_ms_api(UX_RH_ENUMERATION_RETRY_DELAY);
+
   // Retrieve the pointer to the control endpoint.
   UX_DEVICE       *device = _created_device;
   UX_ENDPOINT     *control_endpoint =  &device -> ux_device_control_endpoint;
@@ -1065,10 +1069,10 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
   // Need to allocate memory for the descriptor
   unsigned char * descriptor = UX_NULL;
-  if (request_length > 0)
+//  if (request_length > 0)
   {
       descriptor = _ux_utility_memory_allocate(UX_SAFE_ALIGN, UX_CACHE_SAFE_MEMORY,
-                                request_length);
+                                8);
       if (descriptor == UX_NULL)
           return(UX_MEMORY_INSUFFICIENT);
   }
@@ -1099,6 +1103,8 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
     unsigned int status =  _ux_hcd_xhci_transfer_request(hcd_xhci, transfer_request);
     //unsigned int status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_TRANSFER_REQUEST, transfer_request);
 
+    //device -> ux_device_address =  (unsigned long) device_address;
+
     // Check for correct transfer and entire descriptor returned.
     if ((status == UX_SUCCESS) &&
         (transfer_request -> ux_transfer_request_actual_length == request_length))
@@ -1106,7 +1112,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
       // Print descriptor
         printf("response:");
 
-        for (int i = 0; i < request_length; i++)
+        for (int i = 0; i < 8; i++)
         {
             printf(" %02x", descriptor[i]);
         }
