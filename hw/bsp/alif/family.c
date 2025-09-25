@@ -33,6 +33,9 @@ void board_init(void) {
     SysTick_Config(SystemCoreClock / 1000);
 
     tracelib_init(NULL, NULL);
+
+    // DEBUG: Empty line at the log beginnig
+    printf("\n\r");
 #endif
 
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR
