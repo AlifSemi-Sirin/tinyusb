@@ -1161,10 +1161,13 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   {
       // Need to allocate memory for the descriptor
       unsigned char * descriptor = UX_NULL;
-      descriptor = _ux_utility_memory_allocate(UX_SAFE_ALIGN, UX_CACHE_SAFE_MEMORY,
-                   8);
-      if (descriptor == UX_NULL)
-          return(UX_MEMORY_INSUFFICIENT);
+      if (request_length > 0)
+      {
+          descriptor = _ux_utility_memory_allocate(UX_SAFE_ALIGN, UX_CACHE_SAFE_MEMORY,
+                       request_length);
+          if (descriptor == UX_NULL)
+              return(UX_MEMORY_INSUFFICIENT);
+      }
 
       // Create a transfer_request for the GET_DESCRIPTOR request. The first transfer_request asks
       // for the first 8 bytes only. This way we will know the real MaxPacketSize
@@ -1202,7 +1205,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
           // Print descriptor
             printf("response:");
 
-            for (int i = 0; i < 8; i++)
+            for (int i = 0; i < request_length; i++)
             {
                 printf(" %02x", descriptor[i]);
             }
