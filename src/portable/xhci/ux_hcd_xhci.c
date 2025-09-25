@@ -1645,7 +1645,7 @@ void queue_trb(
     {
         printf(" %02x", buf[i]);
     }
-    printf("\n");
+    printf("\n\r");
 #endif
 
     RTSS_CleanDCache_by_Addr(trb, sizeof(*trb));

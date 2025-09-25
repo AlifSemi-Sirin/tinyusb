@@ -299,6 +299,33 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 
   UX_HCD_XHCI *xhci = hcd_xhci;
 
+  // Check if port status changed, handle device attach/remove event
+  if (_ux_hcd_xhci_port_current_status_get(hcd_xhci, 0))
+  {
+    #ifdef DEBUG
+    printf("hcd_xhci_port_status_changed\r\n");
+    #endif
+    UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
+    // Is this HCD operational?
+    if (hcd -> ux_hcd_status == UX_HCD_STATUS_OPERATIONAL)
+    {
+      // Call HCD for port status
+      uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd,
+              UX_HCD_GET_PORT_STATUS, (void *)((ALIGN_TYPE)rhport));
+      // Check return status
+      if (port_status != UX_PORT_INDEX_UNKNOWN)
+      {
+          // The port_status value is valid and will tell us if there is
+          // a device attached\detached on the downstream port.
+          if (port_status & UX_PS_CCS) {
+              hcd_event_device_attach(rhport, true);
+          } else {
+              hcd_event_device_remove(rhport, true);
+          }
+      }
+    }
+  }
+
 #if 1
   UX_XHCI_TRB *event_ring_deq;
   uint64_t reg_64;
@@ -538,6 +565,15 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr) {
 // Endpoints API
 //--------------------------------------------------------------------+
 #include "host/usbh.h"
+
+unsigned int tx_timer_activate(UX_TIMER *timer)
+{
+  // Dummy function
+  //printf("Called %s(%p)\n\r", __FUNCTION__, timer);
+  // NOTE: TinyUSB assumes each USB event triggers interrupt,
+  // dosen't require status change polling.
+  return 0;
+}
 
 UX_DEVICE  *_ux_host_stack_new_device_get(void)
 {
@@ -910,7 +946,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   {
       printf(" %02x", buffer[i]);
   }
-  printf("\n");
+  printf("\n\r");
 
 #if 1
     //FIXME: Fake event to simulate tusb flow

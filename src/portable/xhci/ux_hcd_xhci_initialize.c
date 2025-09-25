@@ -266,43 +266,43 @@ uint32_t _ux_hcd_xhci_run(UX_HCD_XHCI *xhci)
     return 0;
 }
 
-void _ux_hcd_xhci_host_timer_function(void *arg)
-{
-    UX_HCD_XHCI   *hcd_xhci = (UX_HCD_XHCI  *)arg;
-    UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
-    unsigned int port_index = 0;
+// void _ux_hcd_xhci_host_timer_function(void *arg)
+// {
+//     UX_HCD_XHCI   *hcd_xhci = (UX_HCD_XHCI  *)arg;
+//     UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
+//     unsigned int port_index = 0;
 
-    if (_ux_hcd_xhci_port_current_status_get(hcd_xhci, 0))
-    {
-#ifdef DEBUG
-        printf("_ux_hcd_xhci_port_current_status_get\r\n");
-#endif
+//     if (_ux_hcd_xhci_port_current_status_get(hcd_xhci, 0))
+//     {
+// #ifdef DEBUG
+//         printf("_ux_hcd_xhci_port_current_status_get\r\n");
+// #endif
 
-        /* Is this HCD operational?  */
-        if (hcd -> ux_hcd_status == UX_HCD_STATUS_OPERATIONAL)
-        {
-            //hcd -> ux_hcd_root_hub_signal[0]++;
+//         /* Is this HCD operational?  */
+//         if (hcd -> ux_hcd_status == UX_HCD_STATUS_OPERATIONAL)
+//         {
+//             //hcd -> ux_hcd_root_hub_signal[0]++;
 
-            // Call HCD for port status
-            uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_GET_PORT_STATUS, (void *)((ALIGN_TYPE)port_index));
-            // Check return status
-            if (port_status != UX_PORT_INDEX_UNKNOWN)
-            {
-                // The port_status value is valid and will tell us if there is
-                // a device attached\detached on the downstream port.
-                if (port_status & UX_PS_CCS) {
-                    hcd_event_device_attach(port_index, false);
-                } else {
-                    hcd_event_device_remove(port_index, false);
-                }
-            }
-        }
+//             // Call HCD for port status
+//             uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_GET_PORT_STATUS, (void *)((ALIGN_TYPE)port_index));
+//             // Check return status
+//             if (port_status != UX_PORT_INDEX_UNKNOWN)
+//             {
+//                 // The port_status value is valid and will tell us if there is
+//                 // a device attached\detached on the downstream port.
+//                 if (port_status & UX_PS_CCS) {
+//                     hcd_event_device_attach(port_index, false);
+//                 } else {
+//                     hcd_event_device_remove(port_index, false);
+//                 }
+//             }
+//         }
 
-#ifdef TODO
-        osal_semaphore_post(&_ux_system_host -> ux_system_host_enum_semaphore, true);
-#endif
-    }
-}
+// #ifdef TODO
+//         osal_semaphore_post(&_ux_system_host -> ux_system_host_enum_semaphore, true);
+// #endif
+//     }
+// }
 
 uint32_t  _ux_hcd_xhci_initialize(UX_HCD *hcd)
 {
@@ -401,10 +401,10 @@ uint32_t  _ux_hcd_xhci_initialize(UX_HCD *hcd)
     if (!_hcd_mutex)
         return UX_ERROR;
 #endif
-    ret = _ux_utility_timer_create(&xhci ->port_status_timer, "XHCI Port status timer",
-            _ux_hcd_xhci_host_timer_function, xhci, 20, 20, UX_NO_ACTIVATE);
-    if (ret != UX_SUCCESS)
-        return ret;
+    // ret = _ux_utility_timer_create(&xhci ->port_status_timer, "XHCI Port status timer",
+    //         _ux_hcd_xhci_host_timer_function, xhci, 20, 20, UX_NO_ACTIVATE);
+    // if (ret != UX_SUCCESS)
+    //     return ret;
     /* Enable the interrupts  */
     NVIC_ClearPendingIRQ(USB_IRQ_IRQn);
     NVIC_SetPriority(USB_IRQ_IRQn, 2);
