@@ -202,6 +202,8 @@ TU_ATTR_ALWAYS_INLINE static inline uint8_t edpt_find_opened(uint8_t dev_addr, u
 
 static uint8_t dma_buf[UX_DEMO_NS_SIZE]__attribute__((section("usb_dma_buf")));
 
+static volatile bool _set_address_requested = false;
+
 // optional hcd configuration, called by tuh_configure()
 bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
   (void) rhport;
@@ -359,25 +361,28 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
   event = xhci->event_ring->dequeue;
 //  RTSS_InvalidateDCache_by_Addr(&event->event_cmd, sizeof(event->event_cmd));
 
-  printf("TRB_TYPE=%u\r\n", ((event->event_cmd.flags) & TRB_TYPE_BITMASK) >> 10);
+  uint32_t trb_comp_code = GET_COMP_CODE((event->trans_event.transfer_len));
+  uint32_t slot_id = TRB_TO_SLOT_ID((event->trans_event.flags));
+  int32_t ep_index = TRB_TO_EP_ID((event->trans_event.flags)) - 1;
+  uint32_t trb_type = (((event->event_cmd.flags) & TRB_TYPE_BITMASK) >> 10);
+  xfer_result_t xfer_result = trb_comp_code + XFER_RESULT_SUCCESS - COMP_SUCCESS;
+  printf("trb_comp_code=%d, xfer_result=%d, TRB_TYPE=%u, ep_index=%d\r\n", trb_comp_code, xfer_result, trb_type, ep_index);
 
-  if (((event->event_cmd.flags) & TRB_TYPE_BITMASK) == TRB_TYPE(TRB_TRANSFER))
+  //FIXME: force assert to prevent board crash later
+  TU_ASSERT(trb_comp_code == 1,);
+
+  if (trb_type == TRB_TRANSFER)
   {
 #ifdef DEBUG
-      printf("TRB_TRANSFER \r\n");
+      printf("%s() TRB_TRANSFER \r\n", __FUNCTION__);
 #endif
 //      _ux_utility_event_flags_set(&CONTROL_EP_FLAG, UX_XHCI_CONTROL_EP_EVENT, TX_OR);
-      uint32_t trb_comp_code = GET_COMP_CODE((event->trans_event.transfer_len));
-      uint32_t slot_id = TRB_TO_SLOT_ID((event->trans_event.flags));
-      int32_t ep_index = TRB_TO_EP_ID((event->trans_event.flags)) - 1;
 
-      xfer_result_t xfer_result = trb_comp_code + XFER_RESULT_SUCCESS - COMP_SUCCESS;
-      printf("trb_comp_code=%d, xfer_result=%d, len=%d, flags=0x%lx, slot_id=%u, ep_index=%d\r\n",
-             trb_comp_code, xfer_result, EVENT_TRB_LEN(event->trans_event.transfer_len),
-             event->trans_event.flags, slot_id, ep_index);
+      printf("len=%d, flags=0x%lx, slot_id=%u\r\n",
+             EVENT_TRB_LEN(event->trans_event.transfer_len),
+             event->trans_event.flags, slot_id);
 
-      //FIXME: force assert to prevent board crash later
-      TU_ASSERT(trb_comp_code == 1,);
+
 #if 1
       TU_ASSERT(ep_index < CFG_TUH_DWC2_ENDPOINT_MAX,);
       hcd_endpoint_t* edpt = &_hcd_data.edpt[ep_index];
@@ -417,23 +422,29 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
       finish_td(xhci, td, event, ep, &status);
 #endif
   }
-  else if (((event->event_cmd.flags) & TRB_TYPE_BITMASK) == TRB_TYPE(TRB_COMPLETION))
+  else if (trb_type == TRB_COMPLETION)
   {
 #ifdef DEBUG
-      printf("TRB_COMPLETION\r\n");
+      printf("%s() TRB_COMPLETION\r\n", __FUNCTION__);
 #endif
     UX_XHCI_COMMAND *cmd = _ux_hcd_xhci_list_first_entry(&xhci->cmd_list, UX_XHCI_COMMAND, cmd_list);
     UX_XHCI_TRB * cmd_trb = xhci->cmd_ring->dequeue;
-    uint32_t cmd_comp_code = GET_COMP_CODE((event->event_cmd.status));
-    xfer_result_t xfer_result = cmd_comp_code + XFER_RESULT_SUCCESS - COMP_SUCCESS;
     uint32_t cmd_type = TRB_FIELD_TO_TYPE((cmd_trb->generic.field[3]));
 
-    printf("cmd_comp_code=%lu, xfer_result=%u, command_trb = %p, cmd_trb=%p, event->cmd_trb=0x%"PRIx64", cmd_type=%lu, status=0x%lx, flags=0x%lx\r\n",
-           cmd_comp_code, xfer_result, cmd->command_trb, cmd_trb, event->event_cmd.cmd_trb, cmd_type, event->event_cmd.status, event->event_cmd.flags);
+    printf("command_trb = %p, cmd_trb=%p, event->cmd_trb=0x%"PRIx64", cmd_type=%lu, status=0x%lx, flags=0x%lx\r\n",
+           cmd->command_trb, cmd_trb, event->event_cmd.cmd_trb, cmd_type, event->event_cmd.status, event->event_cmd.flags);
 
+    if ((cmd_type == TRB_ADDR_DEV) && _set_address_requested)
+    {
+#ifdef DEBUG
+        printf("%s() TRB_ADDR_DEV\r\n", __FUNCTION__);
+#endif
+        _set_address_requested = false;
 
-    //FIXME: force assert to prevent board crash later
-    TU_ASSERT(cmd_comp_code == 1,);
+      uint8_t dev_addr = 0;
+      hcd_event_xfer_complete(dev_addr, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+    }
+
   }
   /* TODO: handle
     TRB_PORT_STATUS
@@ -1092,6 +1103,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
       int device_address = setup_packet[2] | (setup_packet[3] << 8);;
 
 //      printf("device=%p\r\n", device);
+      _set_address_requested = true;
 #if 1
 //    status = _ux_hcd_xhci_address_device(xhci, (((UX_TRANSFER*) parameter)->ux_transfer_request_endpoint->ux_endpoint_device));
       status = _ux_hcd_xhci_address_device(hcd_xhci, device);
@@ -1106,6 +1118,8 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
       if (status == UX_SUCCESS)
           return true;
+
+      _set_address_requested = false;
   }
   else
   {
