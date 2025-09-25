@@ -359,14 +359,14 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
   event = xhci->event_ring->dequeue;
 //  RTSS_InvalidateDCache_by_Addr(&event->event_cmd, sizeof(event->event_cmd));
 
+  printf("TRB_TYPE=%u\r\n", ((event->event_cmd.flags) & TRB_TYPE_BITMASK) >> 10);
+
   if (((event->event_cmd.flags) & TRB_TYPE_BITMASK) == TRB_TYPE(TRB_TRANSFER))
   {
 #ifdef DEBUG
       printf("TRB_TRANSFER \r\n");
 #endif
 //      _ux_utility_event_flags_set(&CONTROL_EP_FLAG, UX_XHCI_CONTROL_EP_EVENT, TX_OR);
-
-
       uint32_t trb_comp_code = GET_COMP_CODE((event->trans_event.transfer_len));
       uint32_t slot_id = TRB_TO_SLOT_ID((event->trans_event.flags));
       int32_t ep_index = TRB_TO_EP_ID((event->trans_event.flags)) - 1;
@@ -376,7 +376,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
              trb_comp_code, xfer_result, EVENT_TRB_LEN(event->trans_event.transfer_len),
              event->trans_event.flags, slot_id, ep_index);
 
-      //FIXME: force assert to prevent board crash laer
+      //FIXME: force assert to prevent board crash later
       TU_ASSERT(trb_comp_code == 1,);
 #if 1
       TU_ASSERT(ep_index < CFG_TUH_DWC2_ENDPOINT_MAX,);
@@ -417,6 +417,29 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
       finish_td(xhci, td, event, ep, &status);
 #endif
   }
+  else if (((event->event_cmd.flags) & TRB_TYPE_BITMASK) == TRB_TYPE(TRB_COMPLETION))
+  {
+#ifdef DEBUG
+      printf("TRB_COMPLETION\r\n");
+#endif
+    UX_XHCI_COMMAND *cmd = _ux_hcd_xhci_list_first_entry(&xhci->cmd_list, UX_XHCI_COMMAND, cmd_list);
+    UX_XHCI_TRB * cmd_trb = xhci->cmd_ring->dequeue;
+    uint32_t cmd_comp_code = GET_COMP_CODE((event->event_cmd.status));
+    xfer_result_t xfer_result = cmd_comp_code + XFER_RESULT_SUCCESS - COMP_SUCCESS;
+    uint32_t cmd_type = TRB_FIELD_TO_TYPE((cmd_trb->generic.field[3]));
+
+    printf("cmd_comp_code=%lu, xfer_result=%u, command_trb = %p, cmd_trb=%p, event->cmd_trb=0x%"PRIx64", cmd_type=%lu, status=0x%lx, flags=0x%lx\r\n",
+           cmd_comp_code, xfer_result, cmd->command_trb, cmd_trb, event->event_cmd.cmd_trb, cmd_type, event->event_cmd.status, event->event_cmd.flags);
+
+
+    //FIXME: force assert to prevent board crash later
+    TU_ASSERT(cmd_comp_code == 1,);
+  }
+  /* TODO: handle
+    TRB_PORT_STATUS
+    TRB_ENABLE_SLOT
+    TRB_ADDR_DEV
+  */
   //else //FIXME: this else removed for now because _ux_hcd_xhci_control_transfer_request() waits for complete flag
 #endif
 
@@ -429,12 +452,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
   }
 #else
   {
-      /* TODO: handle
-        TRB_PORT_STATUS
-        TRB_COMPLETION
-        TRB_ENABLE_SLOT
-        TRB_ADDR_DEV
-      */
+
 
       //TODO: _ux_hcd_xhci_update_erst_dequeue(xhci, event_ring_deq);
   }
@@ -1070,6 +1088,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
   if (setup_packet[1] == UX_SET_ADDRESS)
   {
+      //This is command TRB so need the different way to process
       int device_address = setup_packet[2] | (setup_packet[3] << 8);;
 
 //      printf("device=%p\r\n", device);
@@ -1088,7 +1107,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
       if (status == UX_SUCCESS)
           return true;
   }
-  else  
+  else
   {
       // Need to allocate memory for the descriptor
       unsigned char * descriptor = UX_NULL;
