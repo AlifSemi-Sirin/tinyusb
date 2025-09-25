@@ -1045,6 +1045,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   (void) setup_packet;
 
   bool ret = false;
+  unsigned int status;
 
   printf("Called %s(%u %u %p)", __FUNCTION__, rhport, dev_addr, setup_packet);
 
@@ -1067,63 +1068,84 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   UX_TRANSFER     *transfer_request =  &control_endpoint -> ux_endpoint_transfer_request;
   unsigned int request_length = setup_packet[6] | (setup_packet[7] << 8); //8;
 
-  // Need to allocate memory for the descriptor
-  unsigned char * descriptor = UX_NULL;
-//  if (request_length > 0)
+  if (setup_packet[1] == UX_SET_ADDRESS)
   {
+      int device_address = setup_packet[2] | (setup_packet[3] << 8);;
+
+//      printf("device=%p\r\n", device);
+#if 1
+//    status = _ux_hcd_xhci_address_device(xhci, (((UX_TRANSFER*) parameter)->ux_transfer_request_endpoint->ux_endpoint_device));
+      status = _ux_hcd_xhci_address_device(hcd_xhci, device);
+#else
+      //FIXME: workaround for testing
+      status =  _ux_host_stack_device_address_set(device);
+#endif
+
+      /* Now, this address will be the one used in future transfers.  The transfer may have failed and therefore
+          all the device resources including the new address will be free.*/
+      device -> ux_device_address =  (unsigned long) device_address;
+
+      if (status == UX_SUCCESS)
+          return true;
+  }
+  else  
+  {
+      // Need to allocate memory for the descriptor
+      unsigned char * descriptor = UX_NULL;
       descriptor = _ux_utility_memory_allocate(UX_SAFE_ALIGN, UX_CACHE_SAFE_MEMORY,
-                                8);
+                   8);
       if (descriptor == UX_NULL)
           return(UX_MEMORY_INSUFFICIENT);
-  }
 
-  // Create a transfer_request for the GET_DESCRIPTOR request. The first transfer_request asks
-  // for the first 8 bytes only. This way we will know the real MaxPacketSize
-  // value for the control endpoint.
-  transfer_request -> ux_transfer_request_data_pointer =      descriptor;
-  transfer_request -> ux_transfer_request_requested_length =  request_length; //8;
-  transfer_request -> ux_transfer_request_function =          setup_packet[1]; //UX_GET_DESCRIPTOR;
-  transfer_request -> ux_transfer_request_type =              setup_packet[0]; //UX_REQUEST_IN | UX_REQUEST_TYPE_STANDARD | UX_REQUEST_TARGET_DEVICE;
-  transfer_request -> ux_transfer_request_value =             setup_packet[2] | (setup_packet[3] << 8); //UX_DEVICE_DESCRIPTOR_ITEM << 8;
-  transfer_request -> ux_transfer_request_index =             setup_packet[4] | (setup_packet[5] << 8); //0;
+      // Create a transfer_request for the GET_DESCRIPTOR request. The first transfer_request asks
+      // for the first 8 bytes only. This way we will know the real MaxPacketSize
+      // value for the control endpoint.
+      transfer_request -> ux_transfer_request_data_pointer =      descriptor;
+      transfer_request -> ux_transfer_request_requested_length =  request_length; //8;
+      transfer_request -> ux_transfer_request_function =          setup_packet[1]; //UX_GET_DESCRIPTOR;
+      transfer_request -> ux_transfer_request_type =              setup_packet[0]; //UX_REQUEST_IN | UX_REQUEST_TYPE_STANDARD | UX_REQUEST_TARGET_DEVICE;
+      transfer_request -> ux_transfer_request_value =             setup_packet[2] | (setup_packet[3] << 8); //UX_DEVICE_DESCRIPTOR_ITEM << 8;
+      transfer_request -> ux_transfer_request_index =             setup_packet[4] | (setup_packet[5] << 8); //0;
 
-  // Send request to HCD layer.
-  //unsigned int status =  _ux_host_stack_transfer_request(transfer_request);
-  // We can only transfer when the device is ATTACHED, ADDRESSED OR CONFIGURED.
-  if ((device -> ux_device_state == UX_DEVICE_ATTACHED) || (device -> ux_device_state == UX_DEVICE_ADDRESSED)
-          || (device -> ux_device_state == UX_DEVICE_CONFIGURED))
-  {
-    // Set the transfer to pending.
-    transfer_request -> ux_transfer_request_completion_code =  UX_TRANSFER_STATUS_COMPLETED;//UX_TRANSFER_STATUS_PENDING;
+      // Send request to HCD layer.
+      //unsigned int status =  _ux_host_stack_transfer_request(transfer_request);
+      // We can only transfer when the device is ATTACHED, ADDRESSED OR CONFIGURED.
+      if ((device -> ux_device_state == UX_DEVICE_ATTACHED) || (device -> ux_device_state == UX_DEVICE_ADDRESSED)
+              || (device -> ux_device_state == UX_DEVICE_CONFIGURED))
+      {
+        // Set the transfer to pending.
+    //    transfer_request -> ux_transfer_request_completion_code =  UX_TRANSFER_STATUS_COMPLETED;//UX_TRANSFER_STATUS_PENDING;
+        transfer_request -> ux_transfer_request_completion_code =  UX_TRANSFER_STATUS_PENDING;
 
-    // Pointer to the HCD.
-    UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
-    // Send the command to the controller.
+        // Pointer to the HCD.
+        UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
+        // Send the command to the controller.
 
-    unsigned int status =  _ux_hcd_xhci_transfer_request(hcd_xhci, transfer_request);
-    //unsigned int status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_TRANSFER_REQUEST, transfer_request);
+        status =  _ux_hcd_xhci_transfer_request(hcd_xhci, transfer_request);
+        //unsigned int status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_TRANSFER_REQUEST, transfer_request);
 
-    //device -> ux_device_address =  (unsigned long) device_address;
+        //device -> ux_device_address =  (unsigned long) device_address;
 
-    // Check for correct transfer and entire descriptor returned.
-    if ((status == UX_SUCCESS) &&
-        (transfer_request -> ux_transfer_request_actual_length == request_length))
-    {
-      // Print descriptor
-        printf("response:");
-
-        for (int i = 0; i < 8; i++)
+        // Check for correct transfer and entire descriptor returned.
+        if ((status == UX_SUCCESS) &&
+            (transfer_request -> ux_transfer_request_actual_length == request_length))
         {
-            printf(" %02x", descriptor[i]);
+          // Print descriptor
+            printf("response:");
+
+            for (int i = 0; i < 8; i++)
+            {
+                printf(" %02x", descriptor[i]);
+            }
+            printf("\r\n");
+
+          return true;
         }
-        printf("\r\n");
+      }
 
-      return true;
-    }
+      // Free all used resources.
+      _ux_utility_memory_free(descriptor);
   }
-
-  // Free all used resources.
-  _ux_utility_memory_free(descriptor);
 
   return false;
 #else
