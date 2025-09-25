@@ -631,166 +631,6 @@ UX_DEVICE       *device;
     return(UX_NULL);
 }
 
-unsigned int  _ux_host_stack_transfer_request(UX_TRANSFER *transfer_request)
-{
-
-//UX_INTERRUPT_SAVE_AREA
-
-UX_ENDPOINT     *endpoint;
-UX_DEVICE       *device;
-UX_HCD          *hcd;
-unsigned int            status;
-
-#ifdef DEBUG
-    printf("_ux_host_stack_transfer_request()\r\n");
-#endif
-
-    /* Get the endpoint container from the transfer_request */
-    endpoint =  transfer_request -> ux_transfer_request_endpoint;
-
-    /* Get the device container from the endpoint.  */
-    device =  endpoint -> ux_endpoint_device;
-
-    /* Ensure we are not preempted by the enum thread while we check the device
-       state and set the transfer status.  */
-    //UX_DISABLE
-
-    /* We can only transfer when the device is ATTACHED, ADDRESSED OR CONFIGURED.  */
-    if ((device -> ux_device_state == UX_DEVICE_ATTACHED) || (device -> ux_device_state == UX_DEVICE_ADDRESSED)
-            || (device -> ux_device_state == UX_DEVICE_CONFIGURED))
-    {
-
-        /* Set the transfer to pending.  */
-        transfer_request -> ux_transfer_request_completion_code =  UX_TRANSFER_STATUS_PENDING;
-
-        /* Save the thread making this transfer. If we're under interrupt, this
-           will be null.  */
-        //transfer_request -> ux_transfer_request_thread_pending =  _ux_utility_thread_identify();
-    }
-    else
-    {
-
-        /* The device is in an invalid state. Restore interrupts and return error.  */
-        //UX_RESTORE
-
-        /* Check if this is endpoint 0.  */
-        //if ((endpoint -> ux_endpoint_descriptor.bEndpointAddress & (unsigned int)~UX_ENDPOINT_DIRECTION) == 0)
-        //{
-
-        //    /* Check if the class has already protected it.  */
-        //    if (device -> ux_device_protection_semaphore.tx_semaphore_count == 0)
-        //    {
-
-        //        /* Class is using endpoint 0. Unprotect semaphore.  */
-        //        _ux_utility_semaphore_put(&device -> ux_device_protection_semaphore);
-        //    }
-        //}
-
-        return(UX_TRANSFER_NOT_READY);
-    }
-
-    /* Restore interrupts.  */
-    //UX_RESTORE
-
-    /* If trace is enabled, insert this event into the trace buffer.  */
-    //UX_TRACE_IN_LINE_INSERT(UX_TRACE_HOST_STACK_TRANSFER_REQUEST, device, endpoint, transfer_request, 0, UX_TRACE_HOST_STACK_EVENTS, 0, 0)
-
-    /* With the device we have the pointer to the HCD.  */
-    //hcd = UX_DEVICE_HCD_GET(device);
-    hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
-
-    /* If this is endpoint 0, we protect the endpoint from a possible re-entry.  */
-    // if ((endpoint -> ux_endpoint_descriptor.bEndpointAddress & (unsigned int)~UX_ENDPOINT_DIRECTION) == 0)
-    // {
-
-    //     /* Check if the class has already protected it.  */
-    //     if (device -> ux_device_protection_semaphore.tx_semaphore_count != 0)
-    //     {
-
-    //         /* We are using endpoint 0. Protect with semaphore.  */
-    //         status =  _ux_utility_semaphore_get(&device -> ux_device_protection_semaphore, UX_WAIT_FOREVER);
-
-    //         /* Check for status.  */
-    //         if (status != UX_SUCCESS)
-
-    //             /* Something went wrong. */
-    //             return(status);
-    //     }
-    // }
-
-    /* Send the command to the controller.  */
-    status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_TRANSFER_REQUEST, transfer_request);
-
-    /* If this is endpoint 0, we unprotect the endpoint. */
-    // if ((endpoint -> ux_endpoint_descriptor.bEndpointAddress & (UINT)~UX_ENDPOINT_DIRECTION) == 0)
-
-    //     /* We are using endpoint 0. Unprotect with semaphore.  */
-    //     _ux_utility_semaphore_put(&device -> ux_device_protection_semaphore);
-
-    /* And return the status.  */
-    return(status);
-}
-
-unsigned int  _ux_host_stack_device_address_set(UX_DEVICE *device)
-{
-unsigned int            status = UX_ERROR;
-UX_TRANSFER     *transfer_request;
-UX_ENDPOINT     *control_endpoint;
-unsigned short          device_address;
-
-#ifdef DEBUG
-    printf("_ux_host_stack_device_address_set()\r\n");
-#endif
-    UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
-    UX_HCD_XHCI *xhci =  (UX_HCD_XHCI *) hcd -> ux_hcd_controller_hardware;
-
-    /* Retrieve the pointer to the control endpoint.  */
-    control_endpoint =  &device -> ux_device_control_endpoint;
-
-    /* Retrieve the transfer request pointer.  */
-    transfer_request =  &control_endpoint -> ux_endpoint_transfer_request;
-
-    /* Initialize device address to 1.  */
-    device_address =  1;
-
-    /* If trace is enabled, insert this event into the trace buffer.  */
-    //UX_TRACE_IN_LINE_INSERT(UX_TRACE_HOST_STACK_DEVICE_ADDRESS_SET, device, device_address, 0, 0, UX_TRACE_HOST_STACK_EVENTS, 0, 0)
-
-    /* Create a transfer request for the SET_ADDRESS request.  */
-    transfer_request -> ux_transfer_request_data_pointer =      UX_NULL;
-    transfer_request -> ux_transfer_request_requested_length =  0;
-    transfer_request -> ux_transfer_request_function =          UX_SET_ADDRESS;
-    transfer_request -> ux_transfer_request_type =              UX_REQUEST_OUT | UX_REQUEST_TYPE_STANDARD | UX_REQUEST_TARGET_DEVICE;
-    transfer_request -> ux_transfer_request_value =             device_address;
-    transfer_request -> ux_transfer_request_index =             0;
-
-    /* Send request to HCD layer.  */
-    status =  _ux_host_stack_transfer_request(transfer_request);
-
-    /* Now, this address will be the one used in future transfers.  The transfer may have failed and therefore
-        all the device resources including the new address will be free.*/
-    device -> ux_device_address =  (unsigned long) device_address;
-
-    /* Check completion status.  */
-    if (status == UX_SUCCESS)
-    {
-
-        /* Some devices need some time to accept this address.  */
-        tusb_time_delay_ms_api(UX_DEVICE_ADDRESS_SET_WAIT);
-
-        /* Return successful status.  */
-        return(status);
-    }
-    else
-    {
-
-        /* We have an error at the first device transaction. This is mostly
-            due to the device having failed on the reset after power up.
-            we will try again either at the root hub or regular hub. */
-        return(status);
-    }
-}
-
 static UX_DEVICE  *_created_device = NULL;
 
 // Open an endpoint
@@ -865,6 +705,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     // Store the device instance.
     _created_device = device;
 
+    device -> ux_device_address = dev_addr;
     // At this stage the device is attached but not configured.
     //   we don't have to worry about power consumption yet.
     //   Initialize the device structure.  */
@@ -1136,21 +977,18 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   if (setup_packet[1] == UX_SET_ADDRESS)
   {
       //This is command TRB so need the different way to process
-      int device_address = setup_packet[2] | (setup_packet[3] << 8);;
+      int device_address = setup_packet[2] | (setup_packet[3] << 8);
 
 //      printf("device=%p\r\n", device);
       _set_address_requested = true;
 #if 1
 //    status = _ux_hcd_xhci_address_device(xhci, (((UX_TRANSFER*) parameter)->ux_transfer_request_endpoint->ux_endpoint_device));
       status = _ux_hcd_xhci_address_device(hcd_xhci, device);
-#else
-      //FIXME: workaround for testing
-      status =  _ux_host_stack_device_address_set(device);
 #endif
 
       /* Now, this address will be the one used in future transfers.  The transfer may have failed and therefore
           all the device resources including the new address will be free.*/
-      device -> ux_device_address =  (unsigned long) device_address;
+      //device -> ux_device_address =  (unsigned long) device_address;
 
       if (status == UX_SUCCESS)
           return true;
