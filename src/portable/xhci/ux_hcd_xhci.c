@@ -1323,7 +1323,7 @@ cleanup:
      * bits are still set.  When an event occurs, switch over to
      * polling to avoid losing status changes.
      */
-    tx_timer_activate(&xhci->port_status_timer);
+//    tx_timer_activate(&xhci->port_status_timer);
 }
 /*
  * This TD is defined by the TRBs starting at start_trb in start_seg and ending

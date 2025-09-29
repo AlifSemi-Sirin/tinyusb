@@ -449,6 +449,28 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
       finish_td(xhci, td, event, ep, &status);
 #endif
   }
+  else if (trb_type == TRB_PORT_STATUS)
+  {
+      UX_HCD *hcd = _hcd;
+      if (hcd -> ux_hcd_status == UX_HCD_STATUS_OPERATIONAL)
+      {
+          //hcd -> ux_hcd_root_hub_signal[0]++;
+
+          // Call HCD for port status
+          uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_GET_PORT_STATUS, (void *)((ALIGN_TYPE)rhport));
+          // Check return status
+          if (port_status != UX_PORT_INDEX_UNKNOWN)
+          {
+              // The port_status value is valid and will tell us if there is
+              // a device attached\detached on the downstream port.
+              if (port_status & UX_PS_CCS) {
+                  hcd_event_device_attach(rhport, in_isr);
+              } else {
+                  hcd_event_device_remove(rhport, in_isr);
+              }
+          }
+      }
+  }
   else if (trb_type == TRB_COMPLETION)
   {
 #ifdef DEBUG
@@ -474,14 +496,15 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 
   }
   /* TODO: handle
-    TRB_PORT_STATUS
     TRB_ENABLE_SLOT
     TRB_ADDR_DEV
   */
-  //else //FIXME: this else removed for now because _ux_hcd_xhci_control_transfer_request() waits for complete flag
 #endif
 
 #if 1
+  //else //FIXME: this else removed for now because _ux_hcd_xhci_control_transfer_request() waits for complete flag
+  //FIXME: skip only TRB_TRANSFER event
+  if (trb_type != TRB_TRANSFER)
   {
   //_ux_xhci_event_irq_handler(hcd_xhci);
       if(_ux_hcd_xhci_handle_events(xhci))
