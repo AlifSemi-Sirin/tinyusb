@@ -396,7 +396,8 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
   int32_t ep_index = TRB_TO_EP_ID((event->trans_event.flags)) - 1;
   uint32_t trb_type = (((event->event_cmd.flags) & TRB_TYPE_BITMASK) >> 10);
   xfer_result_t xfer_result = trb_comp_code + XFER_RESULT_SUCCESS - COMP_SUCCESS;
-  printf("trb_comp_code=%d, xfer_result=%d, TRB_TYPE=%u, ep_index=%d\r\n", trb_comp_code, xfer_result, trb_type, ep_index);
+  printf("trb_comp_code=%d, xfer_result=%d, TRB_TYPE=%u, ep_index=%d, len=%u, slot_id=%u\r\n",
+         trb_comp_code, xfer_result, trb_type, ep_index, EVENT_TRB_LEN(event->trans_event.transfer_len), slot_id);
 
   //FIXME: force assert to prevent board crash later
   TU_ASSERT(trb_comp_code == 1,);
@@ -410,10 +411,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
       _ux_utility_event_flags_set(&CONTROL_EP_FLAG, UX_XHCI_CONTROL_EP_EVENT, TX_OR);
 #endif
 
-      printf("len=%d, flags=0x%lx, slot_id=%u\r\n",
-             EVENT_TRB_LEN(event->trans_event.transfer_len),
-             event->trans_event.flags, slot_id);
-
+      printf("flags=0x%lx\r\n", event->trans_event.flags);
 
 #if 1
       TU_ASSERT(ep_index < CFG_TUH_DWC2_ENDPOINT_MAX,);
@@ -473,6 +471,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 #endif
         _set_address_requested = false;
 
+        //TODO: calculate dev_addr for slot_id
       uint8_t dev_addr = 0;
       hcd_event_xfer_complete(dev_addr, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
     }
@@ -760,7 +759,9 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
         /* Set the address of the device. The first time a USB device is
            accessed, it responds to the address 0. We need to change the address
            to a free device address between 1 and 127 ASAP.  */
-        status =  _ux_host_stack_device_address_set(device);
+//      status =  _ux_host_stack_device_address_set(device);
+//    status = _ux_hcd_xhci_address_device(xhci, (((UX_TRANSFER*) parameter)->ux_transfer_request_endpoint->ux_endpoint_device));
+      status = _ux_hcd_xhci_address_device(hcd_xhci, device);
         if (status == UX_SUCCESS)
 #endif
           return true;
