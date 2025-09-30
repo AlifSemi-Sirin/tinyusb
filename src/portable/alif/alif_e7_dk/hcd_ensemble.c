@@ -204,6 +204,8 @@ static uint8_t dma_buf[UX_DEMO_NS_SIZE]__attribute__((section("usb_dma_buf")));
 
 static volatile bool _set_address_requested = false;
 
+extern TX_EVENT_FLAGS_GROUP CONTROL_EP_FLAG;
+
 // optional hcd configuration, called by tuh_configure()
 bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
   (void) rhport;
@@ -301,6 +303,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 
   UX_HCD_XHCI *xhci = hcd_xhci;
 
+  //FIXME:  as alternative we can check for (trb_type == TRB_PORT_STATUS)
   // Check if port status changed, handle device attach/remove event
   if (_ux_hcd_xhci_port_current_status_get(hcd_xhci, 0))
   {
@@ -403,7 +406,9 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 #ifdef DEBUG
       printf("%s() TRB_TRANSFER \r\n", __FUNCTION__);
 #endif
-//      _ux_utility_event_flags_set(&CONTROL_EP_FLAG, UX_XHCI_CONTROL_EP_EVENT, TX_OR);
+#if 0
+      _ux_utility_event_flags_set(&CONTROL_EP_FLAG, UX_XHCI_CONTROL_EP_EVENT, TX_OR);
+#endif
 
       printf("len=%d, flags=0x%lx, slot_id=%u\r\n",
              EVENT_TRB_LEN(event->trans_event.transfer_len),
@@ -478,10 +483,15 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
     TRB_ENABLE_SLOT
     TRB_ADDR_DEV
   */
-  //else //FIXME: this else removed for now because _ux_hcd_xhci_control_transfer_request() waits for complete flag
 #endif
 
 #if 1
+  //FIXME: this 'if' removed for now because _ux_hcd_xhci_control_transfer_request() waits for complete flag
+  //       and also something happened without calling these functions
+  //FIXME: skip only TRB_TRANSFER event ?
+#if 0
+  if (trb_type != TRB_TRANSFER)
+#endif
   {
   //_ux_xhci_event_irq_handler(hcd_xhci);
       if(_ux_hcd_xhci_handle_events(xhci))
