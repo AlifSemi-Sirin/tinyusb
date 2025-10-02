@@ -35,104 +35,28 @@
 #include "clk.h"
 #include "power.h"
 
-// Max number of endpoints application can open, can be larger than DWC2_CHANNEL_COUNT_MAX
-#ifndef CFG_TUH_DWC2_ENDPOINT_MAX
-#define CFG_TUH_DWC2_ENDPOINT_MAX 16
+#ifndef MIN
+    #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 #endif
 
-#define DWC2_CHANNEL_COUNT_MAX    16 // absolute max channel count
-TU_VERIFY_STATIC(CFG_TUH_DWC2_ENDPOINT_MAX <= 255, "currently only use 8-bit for index");
+typedef enum {
+    TUH_XHCI_SLOT_STATE_CREATED,
+    TUH_XHCI_SLOT_STATE_OPENED,
+    TUH_XHCI_SLOT_STATE_CONTROL_TRANSFER,
+    TUH_XHCI_SLOT_STATE_SET_ADDRESS,
 
-enum {
-  HCD_XFER_ERROR_MAX = 3
-};
-
-enum {
-  HCD_XFER_PERIOD_SPLIT_NYET_MAX = 3
-};
-
-//--------------------------------------------------------------------
-//
-//--------------------------------------------------------------------
-
-typedef union {
-  uint32_t value;
-  struct TU_ATTR_PACKED {
-    uint32_t ep_size         : 11; // 0..10 Maximum packet size
-    uint32_t ep_num          :  4; // 11..14 Endpoint number
-    uint32_t ep_dir          :  1; // 15 Endpoint direction
-    uint32_t rsv16           :  1; // 16 Reserved
-    uint32_t low_speed_dev   :  1; // 17 Low-speed device
-    uint32_t ep_type         :  2; // 18..19 Endpoint type
-    uint32_t err_multi_count :  2; // 20..21 Error (splitEn = 1) / Multi (SplitEn = 0)  count
-    uint32_t dev_addr        :  7; // 22..28 Device address
-    uint32_t odd_frame       :  1; // 29 Odd frame
-    uint32_t disable         :  1; // 30 Channel disable
-    uint32_t enable          :  1; // 31 Channel enable
-  };
-} dwc2_channel_char_t;
-TU_VERIFY_STATIC(sizeof(dwc2_channel_char_t) == 4, "incorrect size");
-
-typedef union {
-  uint32_t value;
-  struct TU_ATTR_PACKED {
-    uint32_t hub_port    :  7; // 0..6 Hub port number
-    uint32_t hub_addr    :  7; // 7..13 Hub address
-    uint32_t xact_pos    :  2; // 14..15 Transaction position
-    uint32_t split_compl :  1; // 16 Split completion
-    uint32_t rsv17_30    : 14; // 17..30 Reserved
-    uint32_t split_en    :  1; // 31 Split enable
-  };
-} dwc2_channel_split_t;
-TU_VERIFY_STATIC(sizeof(dwc2_channel_split_t) == 4, "incorrect size");
-
-// Host driver struct for each opened endpoint
-typedef struct {
-  union {
-    uint32_t hcchar;
-    dwc2_channel_char_t hcchar_bm;
-  };
-  union {
-    uint32_t hcsplt;
-    dwc2_channel_split_t hcsplt_bm;
-  };
-
-  struct TU_ATTR_PACKED {
-    uint32_t uframe_interval : 18; // micro-frame interval
-    uint32_t speed           : 2;
-    uint32_t next_pid        : 2; // PID for next transfer
-    uint32_t next_do_ping    : 1; // Do PING for next transfer if possible (highspeed OUT)
-    // uint32_t : 9;
-  };
-
-  uint32_t uframe_countdown; // micro-frame count down to transfer for periodic, only need 18-bit
-
-  uint8_t* buffer;
-  uint16_t buflen;
-} hcd_endpoint_t;
-
-// Additional info for each channel when it is active
-typedef struct {
-  volatile bool allocated;
-  uint8_t ep_id;
-  struct TU_ATTR_PACKED {
-    uint8_t err_count : 3;
-    uint8_t period_split_nyet_count : 3;
-    uint8_t halted_nyet : 1;
-  };
-  uint8_t result;
-
-  uint16_t xferred_bytes;  // bytes that accumulate transferred though USB bus for the whole hcd_edpt_xfer(), which can
-                           // be composed of multiple channel_xfer_start() (retry with NAK/NYET)
-  uint16_t fifo_bytes;     // bytes written/read from/to FIFO (may not be transferred on USB bus).
-} hcd_xfer_t;
+    TUH_XHCI_SLOT_STATE_ERROR = -1
+} tuh_xhci_slot_state_t;
 
 typedef struct {
-  hcd_xfer_t xfer[DWC2_CHANNEL_COUNT_MAX];
-  hcd_endpoint_t edpt[CFG_TUH_DWC2_ENDPOINT_MAX];
-} hcd_data_t;
+    bool                    in_use;
+    uint8_t                 dev_addr;
+    uint8_t                 *buffer;
+    uint32_t                buflen;
+    tuh_xhci_slot_state_t   state;
+} tuh_xhci_slot_t;
 
-hcd_data_t _hcd_data;
+static tuh_xhci_slot_t tuh_xhci_slots[UX_XHCI_MAX_HC_SLOTS];
 
 #if 1
 // USB Registers Access Types
@@ -165,30 +89,18 @@ volatile struct {
 
 static UX_DEVICE  *_created_device = NULL;
 
-// Allocate a new endpoint
-TU_ATTR_ALWAYS_INLINE static inline uint8_t edpt_alloc(void) {
-  for (uint32_t i = 0; i < CFG_TUH_DWC2_ENDPOINT_MAX; i++) {
-    hcd_endpoint_t* edpt = &_hcd_data.edpt[i];
-    if (edpt->hcchar_bm.enable == 0) {
-      tu_memclr(edpt, sizeof(hcd_endpoint_t));
-      edpt->hcchar_bm.enable = 1;
-      return i;
+static int tuh_xhci_get_slot_id_by_dev_addr(uint8_t dev_addr)
+{
+    //FIXME: in the USBX code slot_id is insigned and 0 is wrong value
+    for (int i = 0; i < UX_XHCI_MAX_HC_SLOTS; i++)
+    {
+        if (tuh_xhci_slots[i].in_use && (tuh_xhci_slots[i].dev_addr == dev_addr))
+        {
+            return i;
+        }
     }
-  }
-  return TUSB_INDEX_INVALID_8;
-}
 
-// Find a endpoint that is opened previously with hcd_edpt_open()
-// Note: EP0 is bidirectional
-TU_ATTR_ALWAYS_INLINE static inline uint8_t edpt_find_opened(uint8_t dev_addr, uint8_t ep_num, uint8_t ep_dir) {
-  for (uint8_t i = 0; i < (uint8_t)CFG_TUH_DWC2_ENDPOINT_MAX; i++) {
-    const dwc2_channel_char_t* hcchar_bm = &_hcd_data.edpt[i].hcchar_bm;
-    if (hcchar_bm->enable && hcchar_bm->dev_addr == dev_addr &&
-        hcchar_bm->ep_num == ep_num && (ep_num == 0 || hcchar_bm->ep_dir == ep_dir)) {
-      return i;
-    }
-  }
-  return TUSB_INDEX_INVALID_8;
+    return -1;
 }
 
 //--------------------------------------------------------------------+
@@ -202,8 +114,6 @@ TU_ATTR_ALWAYS_INLINE static inline uint8_t edpt_find_opened(uint8_t dev_addr, u
 #define UX_CACHE_SAFE_MEMORY_SIZE         (20 * ONE_KB)
 
 static uint8_t dma_buf[UX_DEMO_NS_SIZE]__attribute__((section("usb_dma_buf")));
-
-static volatile bool _set_address_requested = false;
 
 extern TX_EVENT_FLAGS_GROUP CONTROL_EP_FLAG;
 
@@ -397,11 +307,15 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
   int32_t ep_index = TRB_TO_EP_ID((event->trans_event.flags)) - 1;
   uint32_t trb_type = (((event->event_cmd.flags) & TRB_TYPE_BITMASK) >> 10);
   xfer_result_t xfer_result = trb_comp_code + XFER_RESULT_SUCCESS - COMP_SUCCESS;
-  printf("trb_comp_code=%d, xfer_result=%d, TRB_TYPE=%u, ep_index=%d, len=%u, slot_id=%u\r\n",
-         trb_comp_code, xfer_result, trb_type, ep_index, EVENT_TRB_LEN(event->trans_event.transfer_len), slot_id);
 
+  TU_ASSERT(slot_id < UX_XHCI_MAX_HC_SLOTS,);
   //FIXME: force assert to prevent board crash later
   TU_ASSERT(trb_comp_code == 1,);
+
+  tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
+
+  printf("trb_comp_code=%d, xfer_result=%d, TRB_TYPE=%u, ep_index=%d, len=%u, slot_id=%u, state=%d\r\n",
+         trb_comp_code, xfer_result, trb_type, ep_index, EVENT_TRB_LEN(event->trans_event.transfer_len), slot_id, slot->state);
 
   if (trb_type == TRB_TRANSFER)
   {
@@ -414,22 +328,18 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 
       printf("flags=0x%lx\r\n", event->trans_event.flags);
 
-#if 1
-      TU_ASSERT(ep_index < CFG_TUH_DWC2_ENDPOINT_MAX,);
-      hcd_endpoint_t* edpt = &_hcd_data.edpt[ep_index];
-      dwc2_channel_char_t* hcchar_bm = &edpt->hcchar_bm;
-
-      //TODO: for now ep_index set by USBX code. Need to set it in hcd_edpt_xfer() <- currently this variant
-      //      or use ep_index directly without tu_edpt_addr()
-      //TODO: also get dev_addr from slot_id
-      uint8_t ep_addr = tu_edpt_addr(hcchar_bm->ep_num, hcchar_bm->ep_dir);
-      printf("dev_addr=%d, ep_addr=%d\r\n", hcchar_bm->dev_addr, ep_addr);
+#if 0
+      //For now we doing hcd_event_xfer_complete for al transfer events
+      TU_ASSERT(slot->state == TUH_XHCI_SLOT_STATE_CONTROL_TRANSFER,);
 #endif
+
+      //TODO: put response data into buffer provided by tinyUSB
+
       //hcd_event_xfer_complete(hcchar.dev_addr, ep_addr, xfer->xferred_bytes, (xfer_result_t)xfer->result, in_isr);
       //hcd_event_xfer_complete(0, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
       //hcd_event_xfer_complete(hcchar_bm->dev_addr, ep_addr, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
       //FIXME: may be we shall pass original_length - EVENT_TRB_LEN(event->trans_event.transfer_len) ?
-      hcd_event_xfer_complete(0, ep_index, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+      hcd_event_xfer_complete(slot->dev_addr, ep_index, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
 
 #if 0
     int32_t status = -1;
@@ -465,16 +375,13 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
     printf("command_trb = %p, cmd_trb=%p, event->cmd_trb=0x%"PRIx64", cmd_type=%lu, status=0x%lx, flags=0x%lx\r\n",
            cmd->command_trb, cmd_trb, event->event_cmd.cmd_trb, cmd_type, event->event_cmd.status, event->event_cmd.flags);
 
-    if ((cmd_type == TRB_ADDR_DEV) && _set_address_requested)
+    if ((cmd_type == TRB_ADDR_DEV) && (slot->state == TUH_XHCI_SLOT_STATE_SET_ADDRESS))
     {
 #ifdef DEBUG
         printf("%s() TRB_ADDR_DEV\r\n", __FUNCTION__);
 #endif
-        _set_address_requested = false;
-
-        //TODO: calculate dev_addr for slot_id
-      uint8_t dev_addr = 0;
-      hcd_event_xfer_complete(dev_addr, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+      hcd_event_xfer_complete(slot->dev_addr, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+      //The next step will be 'close the device'
     }
 
   }
@@ -581,8 +488,11 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr) {
   (void) dev_addr;
   printf("Called %s(%u %u)\n", __FUNCTION__, rhport, dev_addr);
 
-  _ux_utility_memory_free(_created_device);
-  _created_device = NULL;
+  if (dev_addr > 0)
+  {
+      _ux_utility_memory_free(_created_device);
+      _created_device = NULL;
+  }
 }
 
 //--------------------------------------------------------------------+
@@ -620,74 +530,22 @@ UX_DEVICE  *_ux_host_stack_new_device_get(void)
     return(device);
 }
 
-// Open an endpoint
-bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const * ep_desc) {
-  (void) rhport;
-  (void) dev_addr;
-  (void) ep_desc;
-  printf("Called %s(%u %u %p)\r\n", __FUNCTION__, rhport, dev_addr, ep_desc);
+static bool tuh_xhci_open_new_device(uint8_t rhport, uint8_t dev_addr)
+{
+    UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
+    UX_HCD_XHCI *xhci =  (UX_HCD_XHCI *) hcd -> ux_hcd_controller_hardware;
 
-  // NOTE: ep_desc is allocated on the stack when called from usbh_edpt_control_open()
-  // You need to copy the data into a local variable who maintains the state of the endpoint and transfer.
-  // Check _hcd_data in hcd_dwc2.c for example.
+    tuh_bus_info_t bus_info;
+    tuh_bus_info_get(dev_addr, &bus_info);
 
-  UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
-  UX_HCD_XHCI *xhci =  (UX_HCD_XHCI *) hcd -> ux_hcd_controller_hardware;
+    //TODO: if this is new device, need to send TRB_ENABLE_SLOT command
+    //      to allocate slot_id
 
-  tuh_bus_info_t bus_info;
-  tuh_bus_info_get(dev_addr, &bus_info);
-
-#if 1
-  // find a free endpoint
-  const uint8_t ep_id = edpt_alloc();
-  TU_ASSERT(ep_id < CFG_TUH_DWC2_ENDPOINT_MAX);
-  hcd_endpoint_t* edpt = &_hcd_data.edpt[ep_id];
-
-  dwc2_channel_char_t* hcchar_bm = &edpt->hcchar_bm;
-  hcchar_bm->ep_size         = tu_edpt_packet_size(ep_desc);
-  hcchar_bm->ep_num          = tu_edpt_number(ep_desc->bEndpointAddress);
-  hcchar_bm->ep_dir          = tu_edpt_dir(ep_desc->bEndpointAddress);
-  hcchar_bm->low_speed_dev   = (bus_info.speed == TUSB_SPEED_LOW) ? 1 : 0;
-  hcchar_bm->ep_type         = ep_desc->bmAttributes.xfer; // ep_type matches TUSB_XFER_*
-  hcchar_bm->err_multi_count = 0;
-  hcchar_bm->dev_addr        = dev_addr;
-  hcchar_bm->odd_frame       = 0;
-  hcchar_bm->disable         = 0;
-  hcchar_bm->enable          = 1;
-
-  dwc2_channel_split_t* hcsplt_bm = &edpt->hcsplt_bm;
-  hcsplt_bm->hub_port        = bus_info.hub_port;
-  hcsplt_bm->hub_addr        = bus_info.hub_addr;
-  hcsplt_bm->xact_pos        = 0;
-  hcsplt_bm->split_compl     = 0;
-//  hcsplt_bm->split_en        = (rh_speed == TUSB_SPEED_HIGH && bus_info.speed != TUSB_SPEED_HIGH) ? 1 : 0;
-
-  edpt->speed = bus_info.speed;
-//  edpt->next_pid = HCTSIZ_PID_DATA0;
-  if (ep_desc->bmAttributes.xfer == TUSB_XFER_ISOCHRONOUS) {
-      edpt->uframe_interval = 1 << (ep_desc->bInterval - 1);
-      if (bus_info.speed == TUSB_SPEED_FULL) {
-          edpt->uframe_interval <<= 3;
-      }
-  } else if (ep_desc->bmAttributes.xfer == TUSB_XFER_INTERRUPT) {
-      if (bus_info.speed == TUSB_SPEED_HIGH) {
-          edpt->uframe_interval = 1 << (ep_desc->bInterval - 1);
-      } else {
-          edpt->uframe_interval = ep_desc->bInterval << 3;
-      }
-  }
-
-  //TODO: if this is new device, need to send TRB_ENABLE_SLOT command
-  //      to allocate slot_id
-#endif
-
-#if 1
-  if (ep_desc->bEndpointAddress == 0) {
     printf("_ux_host_stack_new_device_get() \r\n");
     UX_DEVICE  *device = _ux_host_stack_new_device_get();
     if (device == UX_NULL)
-      // UX_TOO_MANY_DEVICES
-      return false;
+        // UX_TOO_MANY_DEVICES
+        return false;
 
     // Store the device instance.
     _created_device = device;
@@ -703,11 +561,11 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     UX_DEVICE_HCD_SET(device, hcd);
     UX_DEVICE_PORT_LOCATION_SET(device, rhport);
     if (bus_info.speed == TUSB_SPEED_HIGH) {
-      device -> ux_device_speed = UX_HIGH_SPEED_DEVICE;
+        device -> ux_device_speed = UX_HIGH_SPEED_DEVICE;
     } else if (bus_info.speed == TUSB_SPEED_FULL) {
-      device -> ux_device_speed = UX_FULL_SPEED_DEVICE;
+        device -> ux_device_speed = UX_FULL_SPEED_DEVICE;
     } else {
-      device -> ux_device_speed = UX_LOW_SPEED_DEVICE;
+        device -> ux_device_speed = UX_LOW_SPEED_DEVICE;
     }
 
     UX_ENDPOINT  *control_endpoint = &device -> ux_device_control_endpoint;
@@ -720,36 +578,80 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     // If the device is running in high speed the default max packet size for the control endpoint is 64.
     // All other speeds the size is 8.
     if (bus_info.speed == TUSB_SPEED_HIGH) {
-      control_endpoint -> ux_endpoint_descriptor.wMaxPacketSize =  UX_DEFAULT_HS_MPS;
+        control_endpoint -> ux_endpoint_descriptor.wMaxPacketSize =  UX_DEFAULT_HS_MPS;
     } else {
-      control_endpoint -> ux_endpoint_descriptor.wMaxPacketSize =  UX_DEFAULT_MPS;
+        control_endpoint -> ux_endpoint_descriptor.wMaxPacketSize =  UX_DEFAULT_MPS;
     }
 
     // Create the default control endpoint at the HCD level.
     //printf("UX_HCD_CREATE_ENDPOINT\r\n");
     unsigned int status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_CREATE_ENDPOINT, (void *) control_endpoint);
     if (status == UX_SUCCESS) {
-      // Now control endpoint is ready, set state to running
-      control_endpoint -> ux_endpoint_state = UX_ENDPOINT_RUNNING;
+        // Now control endpoint is ready, set state to running
+        control_endpoint -> ux_endpoint_state = UX_ENDPOINT_RUNNING;
+
+        UX_HCD_XHCI *xhci = hcd_xhci;
+        const int32_t slot_id = xhci->slot_id;
+        printf("Allocated slot_id=%u for new device\r\n", slot_id);
+        TU_ASSERT(slot_id < UX_XHCI_MAX_HC_SLOTS);
+
+        tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
+        slot->in_use = true;
+        slot->dev_addr = dev_addr;
 
 #if 0
-      tusb_time_delay_ms_api(UX_RH_ENUMERATION_RETRY_DELAY);
+        tusb_time_delay_ms_api(UX_RH_ENUMERATION_RETRY_DELAY);
         /* Set the address of the device. The first time a USB device is
            accessed, it responds to the address 0. We need to change the address
            to a free device address between 1 and 127 ASAP.  */
-//      status =  _ux_host_stack_device_address_set(device);
-//    status = _ux_hcd_xhci_address_device(xhci, (((UX_TRANSFER*) parameter)->ux_transfer_request_endpoint->ux_endpoint_device));
-      status = _ux_hcd_xhci_address_device(hcd_xhci, device);
+        //      status =  _ux_host_stack_device_address_set(device);
+        //    status = _ux_hcd_xhci_address_device(xhci, (((UX_TRANSFER*) parameter)->ux_transfer_request_endpoint->ux_endpoint_device));
+        status = _ux_hcd_xhci_address_device(hcd_xhci, device);
         if (status == UX_SUCCESS)
 #endif
-          return true;
+        return true;
     }
-  }
 
-  return false;
-#else
-  return true;
-#endif
+    return false;
+}
+
+// Open an endpoint
+bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const * ep_desc)
+{
+    (void) rhport;
+
+    printf("Called %s(%u %u %p)\r\n", __FUNCTION__, rhport, dev_addr, ep_desc);
+
+    if (dev_addr == 0)
+    {
+        //Normally this will be not called because only control endpoint is opened for device with address 0
+        TU_ASSERT(ep_desc->bEndpointAddress == 0);
+
+        //This is new opened device, so need to create instance for it
+        return tuh_xhci_open_new_device(rhport, dev_addr);
+    }
+    else
+    {
+        int slot_id = tuh_xhci_get_slot_id_by_dev_addr(dev_addr);
+        if (slot_id < 0)
+        {
+            printf("Unable to find slot_id for dev_addr %u\r\n", dev_addr);
+            return false;
+        }
+
+        printf("Use slot_id %d for dev_addr %u\r\n", slot_id, dev_addr);
+
+        tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
+
+        //Here opening device after SET_ADDRESS command
+        TU_ASSERT(slot->state == TUH_XHCI_SLOT_STATE_SET_ADDRESS);
+
+        slot->state = TUH_XHCI_SLOT_STATE_OPENED;
+
+        return true;
+    }
+
+    return false;
 }
 
 bool hcd_edpt_close(uint8_t rhport, uint8_t daddr, uint8_t ep_addr) {
@@ -769,20 +671,16 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   (void) buflen;
 
   //TODO: get it from dev_addr
+  //      If the SET_ADDRESS command issued, tuh_xhci_get_slot_id_by_dev_addr() cannot be used
+  //      because it already contains a new dev_addr in the slot structure.
   UX_HCD_XHCI *xhci = hcd_xhci;
   const int32_t slot_id = xhci->slot_id;
+  tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
   const uint32_t ep_index = ((ep_addr == TUSB_DIR_IN_MASK) ? 0x00 : ep_addr);
   //FIXME: in the USBX there is one ep_index = 0 for all 3 messages in the get_descriptor request
   //       but in the tinyUSB second call is IN request with addr 0x80
 
-
-  //dwc2_regs_t* dwc2 = DWC2_REG(rhport);
-  const uint8_t ep_num = tu_edpt_number(ep_addr);
-  const uint8_t ep_dir = tu_edpt_dir(ep_addr);
-
-  uint8_t ep_id = edpt_find_opened(dev_addr, ep_num, ep_dir);
-
-  printf("Called %s(%u %u 0x%x %p %u) ep_id=%u, slot_id=%ld", __FUNCTION__, rhport, dev_addr, ep_addr, buffer, buflen, ep_id, slot_id);
+  printf("Called %s(%u %u 0x%x %p %u) slot_id=%ld, state=%d", __FUNCTION__, rhport, dev_addr, ep_addr, buffer, buflen, slot_id, slot->state);
   for (int i = 0; i < buflen; i++)
   {
       printf(" %02x", buffer[i]);
@@ -790,22 +688,25 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   printf("\n\r");
 
 #if 1
-    //FIXME: Fake event to simulate tusb flow
-    hcd_event_xfer_complete(0, ep_index, buflen, XFER_RESULT_SUCCESS, false);
+    switch (slot->state)
+    {
+        case TUH_XHCI_SLOT_STATE_CONTROL_TRANSFER:
+        case TUH_XHCI_SLOT_STATE_SET_ADDRESS:
+            if (tu_edpt_dir(ep_addr) == TUSB_DIR_IN)
+            {
+                memcpy(buffer, slot->buffer, MIN(slot->buflen, buflen));
+            }
+
+            //FIXME: Fake event to simulate tusb flow
+            hcd_event_xfer_complete(slot->dev_addr, ep_addr, buflen, XFER_RESULT_SUCCESS, false);
+            break;
+
+        default:
+            break;
+    }
 #endif
 
 #if 0
-  TU_ASSERT(ep_id < CFG_TUH_DWC2_ENDPOINT_MAX);
-  hcd_endpoint_t* edpt = &_hcd_data.edpt[ep_id];
-
-  edpt->buffer = buffer;
-  edpt->buflen = buflen;
-
-  if (ep_num == 0) {
-      // update ep_dir since control endpoint can switch direction
-      edpt->hcchar_bm.ep_dir = ep_dir;
-  }
-
 //TODO: transfer data
 // fill TRB and set DOORBELL
 
@@ -963,13 +864,24 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   UX_TRANSFER     *transfer_request =  &control_endpoint -> ux_endpoint_transfer_request;
   unsigned int request_length = setup_packet[6] | (setup_packet[7] << 8); //8;
 
+  int slot_id = tuh_xhci_get_slot_id_by_dev_addr(dev_addr);
+  if (slot_id < 0)
+  {
+      printf("Unable to find slot_id for dev_addr %u\r\n", dev_addr);
+      return false;
+  }
+
+  printf("Use slot_id %d for dev_addr %u, request_length %u\r\n", slot_id, dev_addr, request_length);
+
+  tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
+
   if (setup_packet[1] == UX_SET_ADDRESS)
   {
       //This is command TRB so need the different way to process
       int device_address = setup_packet[2] | (setup_packet[3] << 8);
 
 //      printf("device=%p\r\n", device);
-      _set_address_requested = true;
+      slot->state = TUH_XHCI_SLOT_STATE_SET_ADDRESS;
 #if 1
 //    status = _ux_hcd_xhci_address_device(xhci, (((UX_TRANSFER*) parameter)->ux_transfer_request_endpoint->ux_endpoint_device));
       status = _ux_hcd_xhci_address_device(hcd_xhci, device);
@@ -980,26 +892,40 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
       //device -> ux_device_address =  (unsigned long) device_address;
 
       if (status == UX_SUCCESS)
+      {
+          slot->dev_addr = device_address;
           return true;
-
-      _set_address_requested = false;
+      }
   }
   else
   {
-      // Need to allocate memory for the descriptor
-      unsigned char * descriptor = UX_NULL;
-      if (request_length > 0)
+
+      if (slot->buflen != request_length)
       {
-          descriptor = _ux_utility_memory_allocate(UX_SAFE_ALIGN, UX_CACHE_SAFE_MEMORY,
-                       request_length);
-          if (descriptor == UX_NULL)
-              return(UX_MEMORY_INSUFFICIENT);
+          if (slot->buffer != NULL)
+          {
+              _ux_utility_memory_free(slot->buffer);
+              slot->buflen = 0;
+              slot->buffer = NULL;
+          }
+
+          if (request_length > 0)
+          {
+              //Realloc buffer for IN/OUT data
+              slot->buffer = _ux_utility_memory_allocate(UX_SAFE_ALIGN,
+                             UX_CACHE_SAFE_MEMORY,
+                             request_length);
+              if (slot->buffer == UX_NULL)
+                  return(UX_MEMORY_INSUFFICIENT);
+
+              slot->buflen = request_length;
+          }
       }
 
       // Create a transfer_request for the GET_DESCRIPTOR request. The first transfer_request asks
       // for the first 8 bytes only. This way we will know the real MaxPacketSize
       // value for the control endpoint.
-      transfer_request -> ux_transfer_request_data_pointer =      descriptor;
+      transfer_request -> ux_transfer_request_data_pointer =      slot->buffer;
       transfer_request -> ux_transfer_request_requested_length =  request_length; //8;
       transfer_request -> ux_transfer_request_function =          setup_packet[1]; //UX_GET_DESCRIPTOR;
       transfer_request -> ux_transfer_request_type =              setup_packet[0]; //UX_REQUEST_IN | UX_REQUEST_TYPE_STANDARD | UX_REQUEST_TARGET_DEVICE;
@@ -1020,6 +946,8 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
         UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
         // Send the command to the controller.
 
+        slot->state = TUH_XHCI_SLOT_STATE_CONTROL_TRANSFER;
+
         status =  _ux_hcd_xhci_transfer_request(hcd_xhci, transfer_request);
         //unsigned int status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_TRANSFER_REQUEST, transfer_request);
 
@@ -1034,17 +962,16 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
             for (int i = 0; i < request_length; i++)
             {
-                printf(" %02x", descriptor[i]);
+                printf(" %02x", slot->buffer[i]);
             }
             printf("\r\n");
 
           return true;
         }
       }
-
-      // Free all used resources.
-      _ux_utility_memory_free(descriptor);
   }
+
+  slot->state = TUH_XHCI_SLOT_STATE_ERROR;
 
   return false;
 #else
