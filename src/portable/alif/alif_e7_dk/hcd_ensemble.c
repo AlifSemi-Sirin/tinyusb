@@ -163,6 +163,7 @@ volatile struct {
 } *host_ugbl = (void *) (USB_BASE + 0xC110);
 #endif
 
+static UX_DEVICE  *_created_device = NULL;
 
 // Allocate a new endpoint
 TU_ATTR_ALWAYS_INLINE static inline uint8_t edpt_alloc(void) {
@@ -579,6 +580,9 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr) {
   (void) rhport;
   (void) dev_addr;
   printf("Called %s(%u %u)\n", __FUNCTION__, rhport, dev_addr);
+
+  _ux_utility_memory_free(_created_device);
+  _created_device = NULL;
 }
 
 //--------------------------------------------------------------------+
@@ -597,50 +601,24 @@ unsigned int tx_timer_activate(UX_TIMER *timer)
 
 UX_DEVICE  *_ux_host_stack_new_device_get(void)
 {
-
-#if UX_MAX_DEVICES > 1
-ULONG           container_index;
-#endif
-UX_DEVICE       *device;
+    UX_DEVICE       *device;
 
     /* Start with the first device.  */
     void *memory =  _ux_utility_memory_allocate(UX_NO_ALIGN, UX_REGULAR_MEMORY, sizeof(UX_DEVICE));
     device =  (UX_DEVICE *) memory;
 
-#if UX_MAX_DEVICES > 1
-    /* Reset the container index.  */
-    container_index =  0;
-
-    /* Search the list until the end.  */
-    while (container_index++ < _ux_system_host -> ux_system_host_max_devices)
-#endif
+    if (device != NULL)
     {
+        /* Reset the entire entry.  */
+        _ux_utility_memory_set(device, 0, sizeof(UX_DEVICE)); /* Use case of memset is verified. */
 
-        /* Until we have found an unused entry.  */
-        if (device -> ux_device_handle == UX_UNUSED)
-        {
-
-            /* Reset the entire entry.  */
-            _ux_utility_memory_set(device, 0, sizeof(UX_DEVICE)); /* Use case of memset is verified. */
-
-            /* This entry is now used.  */
-            device -> ux_device_handle =  UX_USED;
-
-            /* Return the device pointer.  */
-            return(device);
-        }
-#if UX_MAX_DEVICES > 1
-
-        /* Move to the next device entry.  */
-        device++;
-#endif
+        /* This entry is now used.  */
+        device -> ux_device_handle =  UX_USED;
     }
 
-    /* No unused devices, return NULL.  */
-    return(UX_NULL);
+    /* Return the device pointer.  */
+    return(device);
 }
-
-static UX_DEVICE  *_created_device = NULL;
 
 // Open an endpoint
 bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const * ep_desc) {
