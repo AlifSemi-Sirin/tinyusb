@@ -308,9 +308,20 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
   uint32_t trb_type = (((event->event_cmd.flags) & TRB_TYPE_BITMASK) >> 10);
   xfer_result_t xfer_result = trb_comp_code + XFER_RESULT_SUCCESS - COMP_SUCCESS;
 
+  switch (trb_comp_code)
+  {
+      case COMP_SUCCESS:
+      case COMP_SHORT_PACKET:
+          xfer_result = XFER_RESULT_SUCCESS;
+          break;
+
+      default:
+        xfer_result = XFER_RESULT_FAILED;
+  }
+
   TU_ASSERT(slot_id < UX_XHCI_MAX_HC_SLOTS,);
   //FIXME: force assert to prevent board crash later
-  TU_ASSERT(trb_comp_code == 1,);
+  TU_ASSERT(xfer_result == XFER_RESULT_SUCCESS,);
 
   tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
 
@@ -698,7 +709,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
             }
 
             //FIXME: Fake event to simulate tusb flow
-            hcd_event_xfer_complete(slot->dev_addr, ep_addr, buflen, XFER_RESULT_SUCCESS, false);
+            hcd_event_xfer_complete(dev_addr, ep_addr, buflen, XFER_RESULT_SUCCESS, false);
             break;
 
         default:
@@ -864,6 +875,11 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   UX_TRANSFER     *transfer_request =  &control_endpoint -> ux_endpoint_transfer_request;
   unsigned int request_length = setup_packet[6] | (setup_packet[7] << 8); //8;
 
+  if (request_length > 64)
+  {
+      printf("Too long ISP request (len %u)\r\n", request_length);
+  }
+
   int slot_id = tuh_xhci_get_slot_id_by_dev_addr(dev_addr);
   if (slot_id < 0)
   {
@@ -893,13 +909,16 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
       if (status == UX_SUCCESS)
       {
+          //FIXME: we can assign slot->dev_addr later, because
+          //       there are troubles finding slot_id based on dev_addr later in the interrupt
           slot->dev_addr = device_address;
           return true;
       }
   }
   else
   {
-
+#if 1
+      //Realloc buffer for IN/OUT data
       if (slot->buflen != request_length)
       {
           if (slot->buffer != NULL)
@@ -911,7 +930,6 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
           if (request_length > 0)
           {
-              //Realloc buffer for IN/OUT data
               slot->buffer = _ux_utility_memory_allocate(UX_SAFE_ALIGN,
                              UX_CACHE_SAFE_MEMORY,
                              request_length);
@@ -921,6 +939,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
               slot->buflen = request_length;
           }
       }
+#endif
 
       // Create a transfer_request for the GET_DESCRIPTOR request. The first transfer_request asks
       // for the first 8 bytes only. This way we will know the real MaxPacketSize
@@ -948,26 +967,15 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
         slot->state = TUH_XHCI_SLOT_STATE_CONTROL_TRANSFER;
 
+#if 1
         status =  _ux_hcd_xhci_transfer_request(hcd_xhci, transfer_request);
-        //unsigned int status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_TRANSFER_REQUEST, transfer_request);
+#else
+        //FIXME: This method is non-working for now
+        uint32_t ep_index = _ux_hcd_xhci_get_endpoint_index(&transfer_request->ux_transfer_request_endpoint->ux_endpoint_descriptor);
+        status = _ux_hcd_xhci_control_transfer_request(hcd_xhci, transfer_request, slot_id, ep_index);
+#endif
 
-        //device -> ux_device_address =  (unsigned long) device_address;
-
-        // Check for correct transfer and entire descriptor returned.
-        if ((status == UX_SUCCESS) &&
-            (transfer_request -> ux_transfer_request_actual_length == request_length))
-        {
-          // Print descriptor
-            printf("response:");
-
-            for (int i = 0; i < request_length; i++)
-            {
-                printf(" %02x", slot->buffer[i]);
-            }
-            printf("\r\n");
-
-          return true;
-        }
+        return (status == UX_SUCCESS);
       }
   }
 

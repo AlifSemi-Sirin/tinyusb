@@ -117,6 +117,9 @@ int32_t _ux_hcd_xhci_control_transfer_request(UX_HCD_XHCI *xhci, UX_TRANSFER *ur
     /* If there's data, queue data TRBs */
     /* Only set interrupt on short packet for IN endpoints   */
     if ((urb -> ux_transfer_request_type & UX_REQUEST_DIRECTION ) == UX_REQUEST_IN)
+        //FIXME: 1. need to check HCC_SPC bit in HCCPARAMS1
+        //       2. tinyUSB examples tries to request packets with size = 128/256 bytes
+        //          but only 16 bytes can be received as short_packet
         field = TRB_ISP | TRB_TYPE(TRB_DATA);
     else
         field = TRB_TYPE(TRB_DATA);
