@@ -105,6 +105,7 @@ uint32_t  _ux_hcd_xhci_entry(UX_HCD *hcd, uint32_t function, void *parameter)
             status =  UX_SUCCESS;
             break;
         case UX_HCD_CREATE_ENDPOINT:
+            printf("EP_type=%d\r\n", (((UX_ENDPOINT*) parameter) -> ux_endpoint_descriptor.bmAttributes.xfer));
             switch ((((UX_ENDPOINT*) parameter) -> ux_endpoint_descriptor.bmAttributes.xfer))
             {
                 case UX_CONTROL_ENDPOINT:

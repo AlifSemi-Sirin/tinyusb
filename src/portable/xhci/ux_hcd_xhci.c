@@ -2239,6 +2239,7 @@ int32_t _ux_hcd_xhci_add_endpoint(UX_HCD_XHCI *xhci, UX_DEVICE *udev, UX_ENDPOIN
     /* If this endpoint is already in use, and the upper layers are trying
      * to add it again without dropping it, reject the addition.
      */
+    printf("%s() ep%02x, ep_index=%d\r\n", __FUNCTION__, ep->ux_endpoint_descriptor.bEndpointAddress, ep_index);
     if (virt_dev->eps[ep_index].ring && !((ctrl_ctx->drop_flags) & added_ctxs))
     {
 #ifdef DEBUG
