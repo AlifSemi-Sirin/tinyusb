@@ -117,9 +117,38 @@ static int tuh_xhci_get_slot_id_by_dev_addr(uint8_t dev_addr)
 #define UX_REGULAR_MEMORY_SIZE            (79 * ONE_KB)
 #define UX_CACHE_SAFE_MEMORY_SIZE         (20 * ONE_KB)
 
-static uint8_t dma_buf[UX_DEMO_NS_SIZE] CFG_TUSB_MEM_SECTION;
+static uint8_t dma_buf[UX_DEMO_NS_SIZE] CFG_TUSB_MEM_SECTION TU_ATTR_ALIGNED(128);
 
 extern TX_EVENT_FLAGS_GROUP CONTROL_EP_FLAG;
+
+static uint8_t _tuh_xhci_get_ep_addr(uint32_t ep_index)
+{
+    if (ep_index == 0) return 0; //Control endpoint
+
+    // 3 -> x02
+    // 2 -> x81
+
+    uint8_t ep_num = (ep_index + 1) / 2;
+    uint8_t ep_dir = (ep_index + 1) % 2;
+
+    printf("ep_index = %u, ep_num=%u, ep_dir=%u\r\n", ep_index, ep_num, ep_dir);
+
+    return (ep_num | (ep_dir ? 0x80 : 0x00));
+
+    //control: ep_num * 2
+    //other:   ep_num * 2 + (ep_dir == in ? 1 : 0) - 1;
+
+/*
+    back conversion:
+    uint32_t index;
+    if ((desc->bmAttributes & UX_MASK_ENDPOINT_TYPE) == UX_CONTROL_ENDPOINT)
+        index = (unsigned int) ((desc->bEndpointAddress & 0x0f) * 2);
+    else
+        index = (unsigned int) ((desc->bEndpointAddress & 0x0f ) * 2) +
+                (ux_endpoint_dir_in(desc) ? 1 : 0) - 1;
+    return index;
+*/
+}
 
 // optional hcd configuration, called by tuh_configure()
 bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
@@ -329,8 +358,11 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 
   tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
 
-  printf("trb_comp_code=%d, xfer_result=%d, TRB_TYPE=%u, ep_index=%d, len=%u, slot_id=%u, state=%d\r\n",
-         trb_comp_code, xfer_result, trb_type, ep_index, EVENT_TRB_LEN(event->trans_event.transfer_len), slot_id, slot->state);
+  //TODO: calculate ep_addr using ep_index
+  uint8_t ep_addr = _tuh_xhci_get_ep_addr(ep_index);
+
+  printf("trb_comp_code=%d, xfer_result=%d, TRB_TYPE=%u, ep_index=%d, buflen=%u, len=%u, slot_id=%u, state=%d, ep_addr=0x%02x\r\n",
+         trb_comp_code, xfer_result, trb_type, ep_index, slot->buflen, EVENT_TRB_LEN(event->trans_event.transfer_len), slot_id, slot->state, ep_addr);
 
   if (trb_type == TRB_TRANSFER)
   {
@@ -348,14 +380,15 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
           case TUH_XHCI_SLOT_STATE_CONTROL_DATA:
               printf("TUH_XHCI_SLOT_STATE_CONTROL_DATA\r\n");
               //TODO: calculate proper ep_addr
-              hcd_event_xfer_complete(slot->dev_addr, ep_index | TUSB_DIR_IN_MASK, slot->buflen - EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+              hcd_event_xfer_complete(slot->dev_addr, ep_addr | TUSB_DIR_IN_MASK, slot->buflen - EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
               break;
 
+#if 0
           case TUH_XHCI_SLOT_STATE_CONTROL_ACK:
               printf("TUH_XHCI_SLOT_STATE_CONTROL_ACK\r\n");
-              hcd_event_xfer_complete(slot->dev_addr, ep_index, 0, xfer_result, true);
+              hcd_event_xfer_complete(slot->dev_addr, ep_addr, 0, xfer_result, true);
               break;
-
+#endif
           default:
 
               //TODO: put response data into buffer provided by tinyUSB
@@ -364,7 +397,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
               //hcd_event_xfer_complete(0, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
               //hcd_event_xfer_complete(hcchar_bm->dev_addr, ep_addr, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
               //FIXME: may be we shall pass original_length - EVENT_TRB_LEN(event->trans_event.transfer_len) ?
-              hcd_event_xfer_complete(slot->dev_addr, ep_index, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+              hcd_event_xfer_complete(slot->dev_addr, ep_addr, slot->buflen - EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
 
               break;
       }
@@ -747,7 +780,6 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
         }
         else
         {
-            printf("TODO: Open new EP %02x for already opened device\r\n", ep);
             return tuh_xhci_open_new_edpt(slot, ep_desc);
         }
 
@@ -775,11 +807,12 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   UX_HCD_XHCI *xhci = hcd_xhci;
   const int32_t slot_id = xhci->slot_id;
   tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
-  const uint32_t ep_index = ((ep_addr == TUSB_DIR_IN_MASK) ? 0x00 : ep_addr);
+//  const uint32_t ep_index = ((ep_addr == TUSB_DIR_IN_MASK) ? 0x00 : ep_addr);
   //FIXME: in the USBX there is one ep_index = 0 for all 3 messages in the get_descriptor request
   //       but in the tinyUSB second call is IN request with addr 0x80
 
-  printf("Called %s(%u %u 0x%x %p %u) slot_id=%ld, state=%d", __FUNCTION__, rhport, dev_addr, ep_addr, buffer, buflen, slot_id, slot->state);
+  printf("Called %s(%u %u 0x%x %p %u) slot_id=%ld, state=%d", __FUNCTION__,
+         rhport, dev_addr, ep_addr, buffer, buflen, slot_id, slot->state);
   if (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT)
   {
       for (int i = 0; i < buflen; i++)
@@ -789,6 +822,9 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   }
   printf("\r\n");
 
+  if (tu_edpt_number(ep_addr) == 0)
+  {
+      //Control endpoint
 #if 1
     switch (slot->state)
     {
@@ -837,7 +873,8 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
                 uint32_t ep_index = _ux_hcd_xhci_get_endpoint_index(&transfer_request->ux_transfer_request_endpoint->ux_endpoint_descriptor);
                 status = _ux_hcd_xhci_control_transfer_request(hcd_xhci, transfer_request, slot_id, ep_index);
 #endif
-
+//                tusb_time_delay_ms_api(UX_RH_ENUMERATION_RETRY_DELAY);
+                printf("ep0 transfer_request status = %d\r\n", status);
                 return (status == UX_SUCCESS);
             }
 
@@ -863,6 +900,45 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
             return false;
     }
 #endif
+  }
+  else
+  {
+      //printf("TODO: setup transfer request\r\n");
+
+      UX_ENDPOINT   *ep;
+      unsigned int  status;
+
+      for (ep = slot->first_edpt;  ep != NULL; ep = ep->ux_endpoint_next_endpoint)
+      {
+          //printf("ep_addr %x == %x\r\n", ep_addr, ep->ux_endpoint_descriptor.bEndpointAddress);
+          if (ep_addr == ep->ux_endpoint_descriptor.bEndpointAddress)
+          {
+              break;
+          }
+      }
+
+      TU_ASSERT(ep != NULL);
+
+      UX_TRANSFER     *transfer_request =  &ep -> ux_endpoint_transfer_request;
+
+      slot->buflen = buflen;
+
+      transfer_request -> ux_transfer_request_data_pointer =      buffer;
+      transfer_request -> ux_transfer_request_requested_length =  buflen;
+      transfer_request -> ux_transfer_request_type =              tu_edpt_dir(ep_addr) == TUSB_DIR_IN ? UX_REQUEST_IN : UX_REQUEST_OUT;
+
+      //transfer_request -> ux_transfer_request_function =          UX_HOST_CLASS_VIDEO_GET_CUR;
+      //transfer_request -> ux_transfer_request_type =              UX_REQUEST_IN | UX_REQUEST_TYPE_CLASS | UX_REQUEST_TARGET_INTERFACE;
+      //transfer_request -> ux_transfer_request_value =             UX_HOST_CLASS_VIDEO_VS_PROBE_CONTROL << 8;
+      //transfer_request -> ux_transfer_request_index =             streaming_interface;
+
+      status =  _ux_hcd_xhci_transfer_request(hcd_xhci, transfer_request);
+//      tusb_time_delay_ms_api(UX_RH_ENUMERATION_RETRY_DELAY);
+
+      printf("ep %02x transfer_request status = %d\r\n", ep_addr, status);
+
+      return (status == UX_SUCCESS);
+  }
 
 #if 0
 //TODO: transfer data
