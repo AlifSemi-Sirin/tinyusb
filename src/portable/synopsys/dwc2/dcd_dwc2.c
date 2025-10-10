@@ -168,7 +168,7 @@ static void dma_setup_prepare(uint8_t rhport) {
   - All EP OUT shared a unique OUT FIFO which uses (for Slave or Buffer DMA, Scatt/Gather DMA use different formula):
     - 13 for setup packets + control words (up to 3 setup packets).
     - 1 for global NAK (not required/used here).
-    - Largest-EPsize/4 + 1. ( FS: 64 bytes, HS: 512 bytes). Recommended is  "2 x (Largest-EPsize/4 + 1)"
+    - Largest-EPsize/4 + 1. (FS: 64 bytes, HS: 512 bytes). Recommended is  "2 x (Largest-EPsize/4 + 1)"
     - 2 for each used OUT endpoint
 
     Therefore GRXFSIZ = 13 + 1 + 2 x (Largest-EPsize/4 + 1) + 2 x EPOUTnum
@@ -282,8 +282,7 @@ static void edpt_disable(uint8_t rhport, uint8_t ep_addr, bool stall) {
   dwc2_dep_t* dep = &dwc2->ep[dir == TUSB_DIR_IN ? 0 : 1][epnum];
 
   if (dir == TUSB_DIR_IN) {
-    // Only disable currently enabled non-control endpoint
-    if ((epnum == 0) || !(dep->diepctl & DIEPCTL_EPENA)) {
+    if (!(dep->diepctl & DIEPCTL_EPENA)) {
       dep->diepctl |= DIEPCTL_SNAK | (stall ? DIEPCTL_STALL : 0);
     } else {
       // Stop transmitting packets and NAK IN xfers.
@@ -425,8 +424,13 @@ bool dcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
   // Clear A override, force B Valid
   dwc2->gotgctl = (dwc2->gotgctl & ~GOTGCTL_AVALOEN) | GOTGCTL_BVALOEN | GOTGCTL_BVALOVAL;
 
+#if CFG_TUSB_MCU == OPT_MCU_STM32N6
+  // No hardware detection of Vbus B-session is available on the STM32N6
+  dwc2->stm32_gccfg |= STM32_GCCFG_VBVALOVAL;
+#endif
+
   // Enable required interrupts
-  dwc2->gintmsk |= GINTMSK_OTGINT | GINTMSK_USBSUSPM | GINTMSK_USBRST | GINTMSK_ENUMDNEM | GINTMSK_WUIM;
+  dwc2->gintmsk |= GINTMSK_OTGINT | GINTMSK_USBRST | GINTMSK_ENUMDNEM | GINTMSK_WUIM;
 
   // TX FIFO empty level for interrupt is complete empty
   uint32_t gahbcfg = dwc2->gahbcfg;
@@ -696,12 +700,23 @@ static void handle_bus_reset(uint8_t rhport) {
   dcfg.address = 0;
   dwc2->dcfg = dcfg.value;
 
-  // Fixed both control EP0 size to 64 bytes
-  dwc2->epin[0].ctl &= ~(0x03 << DIEPCTL_MPSIZ_Pos);
-  dwc2->epout[0].ctl &= ~(0x03 << DOEPCTL_MPSIZ_Pos);
+  // 6. Configure maximum packet size for EP0
+  uint8_t mps = 0;
+  switch (CFG_TUD_ENDPOINT0_SIZE) {
+    case 8: mps = 3; break;
+    case 16: mps = 2; break;
+    case 32: mps = 1; break;
+    case 64: mps = 0; break;
+    default: mps = 0; break;
+  }
 
-  xfer_status[0][TUSB_DIR_OUT].max_size = 64;
-  xfer_status[0][TUSB_DIR_IN].max_size = 64;
+  dwc2->epin[0].ctl &= ~DIEPCTL0_MPSIZ_Msk;
+  dwc2->epout[0].ctl &= ~DOEPCTL0_MPSIZ_Msk;
+  dwc2->epin[0].ctl |= mps << DIEPCTL0_MPSIZ_Pos;
+  dwc2->epout[0].ctl |= mps << DOEPCTL0_MPSIZ_Pos;
+
+  xfer_status[0][TUSB_DIR_OUT].max_size = CFG_TUD_ENDPOINT0_SIZE;
+  xfer_status[0][TUSB_DIR_IN].max_size = CFG_TUD_ENDPOINT0_SIZE;
 
   if(dma_device_enabled(dwc2)) {
     dma_setup_prepare(rhport);
@@ -825,6 +840,11 @@ static void handle_rxflvl_irq(uint8_t rhport) {
 
 static void handle_epout_slave(uint8_t rhport, uint8_t epnum, dwc2_doepint_t doepint_bm) {
   if (doepint_bm.setup_phase_done) {
+    // Cleanup previous pending EP0 IN transfer if any
+    dwc2_dep_t* epin0 = &DWC2_REG(rhport)->epin[0];
+    if (epin0->diepctl & DIEPCTL_EPENA) {
+      edpt_disable(rhport, 0x80, false);
+    }
     dcd_event_setup_received(rhport, _dcd_usbbuf.setup_packet, true);
     return;
   }
@@ -903,6 +923,11 @@ static void handle_epout_dma(uint8_t rhport, uint8_t epnum, dwc2_doepint_t doepi
   dwc2_regs_t* dwc2 = DWC2_REG(rhport);
 
   if (doepint_bm.setup_phase_done) {
+    // Cleanup previous pending EP0 IN transfer if any
+    dwc2_dep_t* epin0 = &DWC2_REG(rhport)->epin[0];
+    if (epin0->diepctl & DIEPCTL_EPENA) {
+      edpt_disable(rhport, 0x80, false);
+    }
     dma_setup_prepare(rhport);
     dcd_dcache_invalidate(_dcd_usbbuf.setup_packet, 8);
     dcd_event_setup_received(rhport, _dcd_usbbuf.setup_packet, true);
@@ -1027,16 +1052,19 @@ void dcd_int_handler(uint8_t rhport) {
   if (gintsts & GINTSTS_ENUMDNE) {
     // ENUMDNE is the end of reset where speed of the link is detected
     dwc2->gintsts = GINTSTS_ENUMDNE;
+    dwc2->gintmsk |= GINTMSK_USBSUSPM;
     handle_enum_done(rhport);
   }
 
   if (gintsts & GINTSTS_USBSUSP) {
     dwc2->gintsts = GINTSTS_USBSUSP;
+    dwc2->gintmsk &= ~GINTMSK_USBSUSPM;
     dcd_event_bus_signal(rhport, DCD_EVENT_SUSPEND, true);
   }
 
   if (gintsts & GINTSTS_WKUINT) {
     dwc2->gintsts = GINTSTS_WKUINT;
+    dwc2->gintmsk |= GINTMSK_USBSUSPM;
     dcd_event_bus_signal(rhport, DCD_EVENT_RESUME, true);
   }
 
@@ -1056,6 +1084,7 @@ void dcd_int_handler(uint8_t rhport) {
 
   if(gintsts & GINTSTS_SOF) {
     dwc2->gintsts = GINTSTS_SOF;
+    dwc2->gintmsk |= GINTMSK_USBSUSPM;
     const uint32_t frame = (dwc2->dsts & DSTS_FNSOF) >> DSTS_FNSOF_Pos;
 
     // Disable SOF interrupt if SOF was not explicitly enabled since SOF was used for remote wakeup detection
