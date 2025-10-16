@@ -2646,7 +2646,6 @@ int32_t _ux_hcd_xhci_setup_addressable_virt_dev(UX_HCD_XHCI *xhci, UX_DEVICE *ud
 
     /* Only the control endpoint is valid - one endpoint context */
     slot_ctx->dev_info |= (LAST_CTX(1));
-    udev->ux_device_speed = UX_HIGH_SPEED_DEVICE;
     switch (udev->ux_device_speed)
     {
         case UX_HIGH_SPEED_DEVICE:
