@@ -71,6 +71,23 @@ uint32_t  _ux_hcd_xhci_port_status_get(UX_HCD_XHCI *xhci, uint32_t port_index)
      * */
     if (status & PORT_POWER)
         port_status |=  UX_PS_PPS;
+
+    switch (status & PORT_SPEED_MASK)
+    {
+        case PORT_FULL_SPEED:
+            port_status |= UX_PS_DS_FS;
+            break;
+        case PORT_LOW_SPEED:
+            port_status |= UX_PS_DS_LS;
+            break;
+        case PORT_HIGH_SPEED:
+            port_status |= UX_PS_DS_HS;
+            break;
+        case PORT_SUPER_SPEED:
+            //port_status |=
+            break;
+    }
+
     return(port_status);
 }
 
