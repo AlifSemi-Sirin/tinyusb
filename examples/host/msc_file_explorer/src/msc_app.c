@@ -52,7 +52,7 @@ static EmbeddedCli *_cli;
 static CLI_UINT cli_buffer[BYTES_TO_CLI_UINTS(CLI_BUFFER_SIZE)];
 
 //------------- Elm Chan FatFS -------------//
-static FATFS fatfs[CFG_TUH_DEVICE_MAX]; // for simplicity only support 1 LUN per device
+static FATFS fatfs[CFG_TUH_DEVICE_MAX] CFG_TUSB_MEM_SECTION; // for simplicity only support 1 LUN per device
 static volatile bool _disk_busy[CFG_TUH_DEVICE_MAX];
 
 // define the buffer to be place in USB/DMA memory with correct alignment/cache line size
