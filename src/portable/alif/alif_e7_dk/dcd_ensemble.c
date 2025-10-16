@@ -29,9 +29,11 @@
 #include <dcd_ensemble_isoc_buffers.h>
 
 // Logging definitions
+#define TUSB_ALIF_DEBUG
+#define TUSB_ALIF_DEBUG_DEPTH 2000
 #if defined(TUSB_ALIF_DEBUG)
 #if (TUSB_ALIF_DEBUG_DEPTH > 1)
-#define LOG(...)      { int _bi = bi++; memset(logbuf[_bi % TUSB_ALIF_DEBUG_DEPTH], ' ', 48);\
+#define LOG1(...)      { int _bi = bi++; memset(logbuf[_bi % TUSB_ALIF_DEBUG_DEPTH], ' ', 48);\
                         snprintf(logbuf[(_bi) % TUSB_ALIF_DEBUG_DEPTH], 48, __VA_ARGS__); }
 char logbuf[TUSB_ALIF_DEBUG_DEPTH][48] __attribute__((aligned(16)));
 int bi = 0;
@@ -43,6 +45,10 @@ char logbuf[48];
 #else
 #define LOG(...)
 #endif
+#define LOG(...)
+
+static bool dbg_printed;
+static uint32_t dbg_then;
 
 // Defines --------------------------------------------------------
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR
@@ -95,7 +101,7 @@ static uint16_t _ep_dir_out_mps[4] = {MAX_PACKET_SIZE, 0, 0, 0};
 
 // Isochronous endpoints
 #define DCD_TRB_NUM 32
-#define DCD_TRB_THRESHOLD 5
+#define DCD_UFRAME_THRESHOLD 4
 
 #if DCD_ENSEMBLE_ISOC_IN_BUF_LEN_EP3
 static trb_t _trb_ep3[DCD_TRB_NUM] CFG_TUSB_MEM_SECTION TU_ATTR_ALIGNED(32);
@@ -250,6 +256,29 @@ static inline uint32_t _dcd_local_to_global(const volatile void *local_addr) {
 }
 
 #endif
+
+void dbg_print(void) {
+    if (dbg_printed || bi < 100) {
+        return;
+    }
+
+    for (int i = 0; i < TUSB_ALIF_DEBUG_DEPTH; ++i) {
+        char *str = logbuf[(bi + i) % TUSB_ALIF_DEBUG_DEPTH];
+        if (strlen(str) > 0) {
+            printf("%s\r\n", str);
+        }
+    }
+    printf("\r\n");
+    _dcd_invalidate_dcache(_edpt[3].trbs, sizeof(trb_t) * DCD_TRB_NUM);
+    for (int i = 0; i < DCD_TRB_NUM; ++i) {
+        uint32_t *trb = (uint32_t*)&_edpt[3].trbs[i];
+        printf("%u: %08x %08x %08x %08x%s\r\n", i, trb[0], trb[1], trb[2], trb[3],
+               i == _edpt[3].trb_tail - _edpt[3].trbs ? " <<<" : "");
+    }
+    printf("\r\n\r\n");
+
+    dbg_printed = true;
+}
 
 /// Device Setup ---------------------------------------------------------------
 // Initializes the USB peripheral for device mode and enables it.
@@ -676,6 +705,8 @@ bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * desc_ep) {
 
     udev->dalepena |= (1 << ep);
 
+    LOG1("open");
+
     dcd_int_enable(rhport);
 
     return true;
@@ -720,6 +751,8 @@ void dcd_edpt_close(uint8_t rhport, uint8_t ep_addr) {
     }
 
     udev->dalepena &= ~(1 << ep);
+
+    LOG1("close");
 
     dcd_int_enable(rhport);
 }
@@ -901,7 +934,7 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
         return;
     }
 
-    LOG("%010u DEPEVT ep%u evt%u sts%u", DWT->CYCCNT, ep, evt, sts);
+    LOG1("%010u DEPEVT ep%u evt%u sts%u", DWT->CYCCNT, ep, evt, sts);
 
     depevt_sts_t depevt_sts = {.val = sts};
 
@@ -970,13 +1003,30 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
             LOG("Transfer in progress");
             if (_edpt[ep].type == TUSB_XFER_ISOCHRONOUS) {
                 ++_edpt[ep].curr_frame;
+
+                if (sts & DEPEVT_STS_MISSED_ISOC) {
+                    _dcd_end_xfer(ep);
+                    LOG1("missed");
+                }
+
                 if (_edpt[ep].trbs_in_use > 0) {
                     --_edpt[ep].trbs_in_use;
+
+                    LOG1("%04x: sts %02x | %u", udev->dsts_b.soffn, sts, _edpt[ep].trbs_in_use);
+
+                    if (dbg_then > 0 && board_millis() - dbg_then > 1) {
+                    // if (!dbg_printed && bi >= 1990) {
+                        LOG1("irq\r\n");
+                        // dbg_print();
+                    }
+
+                    dbg_then = board_millis();
 
                     // This is a sign that application doesn't have enough
                     // scheduled transfers. A zero-length packet is scheduled
                     // in order to keep the transfer alive
-                    if (_edpt[ep].trbs_in_use < DCD_TRB_THRESHOLD) {
+                    if (_edpt[ep].trbs_in_use < DCD_UFRAME_THRESHOLD) {
+                        LOG1("%04x: xfer %u", udev->dsts_b.soffn, _edpt[ep].trbs_in_use);
                         _dcd_start_xfer_isoc(ep, NULL, 0);
                     }
                 }
@@ -989,6 +1039,10 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
             // Start isochronous transfer
             if (_edpt[ep].type == TUSB_XFER_ISOCHRONOUS) {
                 _edpt[ep].curr_frame = par;
+
+                LOG1("%04x: not ready %02x", udev->dsts_b.soffn, sts);
+
+                _edpt[ep].xfer_requested = true;
 
                 dcd_event_xfer_complete(TUD_OPT_RHPORT,
                                         tu_edpt_addr(ep >> 1, ep & 1),
@@ -1038,7 +1092,7 @@ static void _dcd_handle_depevt(uint8_t rhport, uint8_t ep, uint8_t evt, uint8_t 
 }
 
 static void _dcd_handle_devt(uint8_t rhport, uint8_t evt, uint16_t info) {
-    LOG("%010u DEVT evt%u info%u", DWT->CYCCNT, evt, info);
+    LOG1("%010u DEVT evt%u info%u", DWT->CYCCNT, evt, info);
     switch (evt) {
         case DEVT_USBRST: {
             LOG("USB reset");
@@ -1199,6 +1253,9 @@ static uint8_t _dcd_start_xfer(uint8_t ep, void* buf, uint32_t size, uint8_t typ
 
 static uint8_t _dcd_start_xfer_isoc(uint8_t ep, void* buf, uint32_t size)
 {
+    // Ignore if XferNotReady hasn't been received yet
+    if (!_edpt[ep].xfer_requested) return 0;
+
     // Populate the TRB fields
     trb_t *trb = _dcd_next_trb(ep);
     memset(trb, 0, sizeof(trb_t));
@@ -1245,7 +1302,7 @@ static uint8_t _dcd_start_xfer_isoc(uint8_t ep, void* buf, uint32_t size)
         if (ufrm < _edpt[ep].curr_frame) {
             ufrm += BIT(14);
         }
-        _edpt[ep].curr_frame = ((ufrm & ~(_edpt[ep].interval - 1))
+        _edpt[ep].curr_frame = (((ufrm + DCD_UFRAME_THRESHOLD) & ~(_edpt[ep].interval - 1))
                                 + _edpt[ep].interval);
         type = CMDTYP_DEPSTRTXFER;
         param = _edpt[ep].curr_frame;
@@ -1267,6 +1324,8 @@ static uint8_t _dcd_start_xfer_isoc(uint8_t ep, void* buf, uint32_t size)
 
 static uint8_t _dcd_end_xfer(uint8_t ep)
 {
+    _edpt[ep].xfer_requested = false;
+
     if (!_edpt[ep].xfer_active) {
         return 0;
     }
@@ -1275,12 +1334,21 @@ static uint8_t _dcd_end_xfer(uint8_t ep)
 
     uint8_t ret = _dcd_cmd_wait(ep, CMDTYP_DEPENDXFER, _edpt[ep].resource_idx);
 
+    LOG1("end");
+
     return ret;
 }
 
 static trb_t *_dcd_next_trb(uint8_t ep) {
     // Wait for a free TRB
-    while (_edpt[ep].trbs_in_use == DCD_TRB_NUM - 1);
+    uint32_t then = board_millis();
+    while (_edpt[ep].trbs_in_use == DCD_TRB_NUM - 1) {
+        if (board_millis() - then > 10) {
+            LOG1("wait");
+            dbg_print();
+            break;
+        }
+    }
     ++_edpt[ep].trbs_in_use;
 
     trb_t *next = _edpt[ep].trb_tail++;

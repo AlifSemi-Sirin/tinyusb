@@ -30,7 +30,10 @@
 #define DSTS_SOFFN_MASK         0x3fff
 
 // DEPCMD commandparam resource id mask
-#define DEPCMD_CMDPARAM_RES_ID_MASK 0x7f;
+#define DEPCMD_CMDPARAM_RES_ID_MASK 0x7f
+
+// DEPEVT STS FLAGS
+#define DEPEVT_STS_MISSED_ISOC  0x8
 
 // Physical endpoints
 enum {
@@ -861,6 +864,7 @@ typedef volatile struct {
     uint16_t    curr_frame;         // Current microframe
     bool        initialized;        // Endpoint has been initialized already
     bool        xfer_active;        // Enpdoint is currently transfering
+    bool        xfer_requested;     // XferNotReady event received to start isochronous
     bool        stalled;            // Endpoint has been stalled
 } endpoint_t;
 
