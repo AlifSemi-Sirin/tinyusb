@@ -24,6 +24,12 @@ static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios)
 /**
  * @brief Board init: configure LED and button pins
  */
+
+void tracelib_cb(uint32_t event)
+{
+    //This CB required to make receive_str() function ublocking
+}
+
 void board_init(void) {
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
       BOARD_Pinmux_Init();
@@ -32,7 +38,7 @@ void board_init(void) {
     // 1ms tick timer
     SysTick_Config(SystemCoreClock / 1000);
 
-    tracelib_init(NULL, NULL);
+    tracelib_init(NULL, tracelib_cb);
 
     // DEBUG: Empty line at the log beginnig
     printf("\n\r");
@@ -102,9 +108,14 @@ uint32_t board_button_read(void) {
  * @brief UART read handler
  */
 int board_uart_read(uint8_t* buf, int len) {
+#if 1
+    int ret = receive_str((char *) buf, len);
+    return (ret == ARM_DRIVER_OK) ? len : 0;
+#else
     // NOTE: stdin functionality has not been implemented
     (void) buf, (void) len;
     return 0;
+#endif
 }
 
 /**
