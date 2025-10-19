@@ -570,7 +570,7 @@ static inline int ux_endpoint_xfer_control(const UX_ENDPOINT_DESCRIPTOR *epd)
 static inline int ux_endpoint_maxp(const UX_ENDPOINT_DESCRIPTOR *epd)
 {
     //printf("Called %s(%p)\n\r", __FUNCTION__, epd);
-    return 512;
+    return (epd->wMaxPacketSize) & UX_MAX_PACKET_SIZE_MASK;
 }
 
 static inline int ux_endpoint_type(const UX_ENDPOINT_DESCRIPTOR *epd)

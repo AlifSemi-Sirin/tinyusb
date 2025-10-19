@@ -584,6 +584,19 @@ static bool tuh_xhci_open_new_device(uint8_t rhport, uint8_t dev_addr, tusb_desc
     //TODO: if this is new device, need to send TRB_ENABLE_SLOT command
     //      to allocate slot_id
 
+    // FIXME: Workaround to avoid long delay in TinyUSB after port reset
+    uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_RESET_PORT, (void *)((ALIGN_TYPE)rhport));
+    if (port_status != UX_SUCCESS)
+        return false;
+
+    // The port reset phase was successful
+    port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_GET_PORT_STATUS, (void *)((ALIGN_TYPE)rhport));
+    if (port_status == UX_PORT_INDEX_UNKNOWN)
+        return false;
+    // Check if device is still connected
+    if ((port_status & UX_PS_CCS) == 0)
+        return false;
+
     printf("_ux_host_stack_new_device_get() \r\n");
     UX_DEVICE  *device = _ux_host_stack_new_device_get();
     if (device == UX_NULL)
