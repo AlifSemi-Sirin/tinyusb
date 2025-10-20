@@ -341,9 +341,10 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 
   uint8_t ep_addr = _tuh_xhci_get_ep_addr(ep_index);
 
+#ifdef DEBUG
   printf("trb_comp_code=%d, xfer_result=%d, TRB_TYPE=%u, ep_index=%d, buflen=%u, len=%u, slot_id=%u, state=%d, ep_addr=0x%02x\r\n",
          trb_comp_code, xfer_result, trb_type, ep_index, slot->buflen, EVENT_TRB_LEN(event->trans_event.transfer_len), slot_id, slot->state, ep_addr);
-
+#endif
   if (trb_type == TRB_TRANSFER)
   {
 #ifdef DEBUG
@@ -353,19 +354,25 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
       _ux_utility_event_flags_set(&CONTROL_EP_FLAG, UX_XHCI_CONTROL_EP_EVENT, TX_OR);
 #endif
 
+#ifdef DEBUG
       printf("flags=0x%lx\r\n", event->trans_event.flags);
+#endif
 
       switch (slot->state)
       {
           case TUH_XHCI_SLOT_STATE_CONTROL_DATA:
+#ifdef DEBUG
               printf("TUH_XHCI_SLOT_STATE_CONTROL_DATA\r\n");
+#endif
               //TODO: calculate proper ep_addr
               hcd_event_xfer_complete(slot->dev_addr, ep_addr | TUSB_DIR_IN_MASK, slot->buflen - EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
               break;
 
 #if 0
           case TUH_XHCI_SLOT_STATE_CONTROL_ACK:
+#ifdef DEBUG
               printf("TUH_XHCI_SLOT_STATE_CONTROL_ACK\r\n");
+#endif
               hcd_event_xfer_complete(slot->dev_addr, ep_addr, 0, xfer_result, true);
               break;
 #endif
@@ -418,9 +425,10 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
     UX_XHCI_TRB * cmd_trb = xhci->cmd_ring->dequeue;
     uint32_t cmd_type = TRB_FIELD_TO_TYPE((cmd_trb->generic.field[3]));
 
+#ifdef DEBUG
     printf("command_trb = %p, cmd_trb=%p, event->cmd_trb=0x%"PRIx64", cmd_type=%lu, status=0x%lx, flags=0x%lx\r\n",
            cmd->command_trb, cmd_trb, event->event_cmd.cmd_trb, cmd_type, event->event_cmd.status, event->event_cmd.flags);
-
+#endif
     if ((cmd_type == TRB_ADDR_DEV) && (slot->state == TUH_XHCI_SLOT_STATE_SET_ADDRESS))
     {
 #ifdef DEBUG
@@ -495,18 +503,18 @@ bool hcd_port_connect_status(uint8_t rhport) {
 // Reset USB bus on the port. Return immediately, bus reset sequence may not be complete.
 // Some port would require hcd_port_reset_end() to be invoked after 10ms to complete the reset sequence.
 void hcd_port_reset(uint8_t rhport) {
-  UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
-  uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_RESET_PORT, (void *)((ALIGN_TYPE)rhport));
-  if (port_status != UX_SUCCESS) {
-    printf("ERROR: HCD port reset has failed\r\n");
-  } else {
-    printf("DEBUG: HCD port reset success\r\n");
-  }
+    (void) rhport;
 }
 
 // Complete bus reset sequence, may be required by some controllers
 void hcd_port_reset_end(uint8_t rhport) {
-  (void) rhport;
+  UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
+  uint32_t port_status = _ux_hcd_xhci_reset_port(hcd_xhci, rhport);
+  if (port_status != UX_SUCCESS) {
+      printf("ERROR: HCD port reset has failed\r\n");
+  } else {
+      printf("DEBUG: HCD port reset success\r\n");
+  }
 }
 
 // Get port link speed
@@ -800,6 +808,11 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
       }
   }
   printf("\r\n");
+
+  if ((buffer != NULL) && ((uint32_t)buffer < 0x20004000))
+  {
+      printf("Wrong buffer address\r\n");
+  }
 
   if (tu_edpt_number(ep_addr) == 0)
   {
