@@ -503,18 +503,18 @@ bool hcd_port_connect_status(uint8_t rhport) {
 // Reset USB bus on the port. Return immediately, bus reset sequence may not be complete.
 // Some port would require hcd_port_reset_end() to be invoked after 10ms to complete the reset sequence.
 void hcd_port_reset(uint8_t rhport) {
-    (void) rhport;
+    UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
+    uint32_t port_status = _ux_hcd_xhci_reset_port(hcd_xhci, rhport);
+    if (port_status != UX_SUCCESS) {
+        printf("ERROR: HCD port reset has failed\r\n");
+    } else {
+        printf("DEBUG: HCD port reset success\r\n");
+    }
 }
 
 // Complete bus reset sequence, may be required by some controllers
 void hcd_port_reset_end(uint8_t rhport) {
-  UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
-  uint32_t port_status = _ux_hcd_xhci_reset_port(hcd_xhci, rhport);
-  if (port_status != UX_SUCCESS) {
-      printf("ERROR: HCD port reset has failed\r\n");
-  } else {
-      printf("DEBUG: HCD port reset success\r\n");
-  }
+    (void) rhport;
 }
 
 // Get port link speed
@@ -589,11 +589,22 @@ static bool tuh_xhci_open_new_device(uint8_t rhport, uint8_t dev_addr, tusb_desc
     UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
     UX_HCD_XHCI *xhci =  (UX_HCD_XHCI *) hcd -> ux_hcd_controller_hardware;
 
-    tuh_bus_info_t bus_info;
-    tuh_bus_info_get(dev_addr, &bus_info);
-
     //TODO: if this is new device, need to send TRB_ENABLE_SLOT command
     //      to allocate slot_id
+#if 0
+    // FIXME: Workaround to avoid long delay in TinyUSB after port reset
+    uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_RESET_PORT, (void *)((ALIGN_TYPE)rhport));
+    if (port_status != UX_SUCCESS)
+        return false;
+
+    // The port reset phase was successful
+    port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_GET_PORT_STATUS, (void *)((ALIGN_TYPE)rhport));
+    if (port_status == UX_PORT_INDEX_UNKNOWN)
+        return false;
+    // Check if device is still connected
+    if ((port_status & UX_PS_CCS) == 0)
+        return false;
+#endif
 
     printf("_ux_host_stack_new_device_get() \r\n");
     UX_DEVICE  *device = _ux_host_stack_new_device_get();
@@ -610,17 +621,18 @@ static bool tuh_xhci_open_new_device(uint8_t rhport, uint8_t dev_addr, tusb_desc
     //   Initialize the device structure.  */
     device -> ux_device_handle =         (uint32_t) (ALIGN_TYPE) device;
     device -> ux_device_state =          UX_DEVICE_ATTACHED;
+    tusb_speed_t tusb_speed = hcd_port_speed_get(rhport);
+    if (tusb_speed == TUSB_SPEED_HIGH) {
+         device -> ux_device_speed = UX_HIGH_SPEED_DEVICE;
+    } else if (tusb_speed == TUSB_SPEED_FULL) {
+          device -> ux_device_speed = UX_FULL_SPEED_DEVICE;
+    } else {
+        device -> ux_device_speed = UX_LOW_SPEED_DEVICE;
+    }
     UX_DEVICE_MAX_POWER_SET(device, UX_MAX_SELF_POWER);
     UX_DEVICE_PARENT_SET(device, UX_NULL);
     UX_DEVICE_HCD_SET(device, hcd);
     UX_DEVICE_PORT_LOCATION_SET(device, rhport);
-    if (bus_info.speed == TUSB_SPEED_HIGH) {
-        device -> ux_device_speed = UX_HIGH_SPEED_DEVICE;
-    } else if (bus_info.speed == TUSB_SPEED_FULL) {
-        device -> ux_device_speed = UX_FULL_SPEED_DEVICE;
-    } else {
-        device -> ux_device_speed = UX_LOW_SPEED_DEVICE;
-    }
 
     UX_ENDPOINT  *control_endpoint = &device -> ux_device_control_endpoint;
     control_endpoint -> ux_endpoint =  (unsigned long) (ALIGN_TYPE) control_endpoint;
@@ -634,7 +646,7 @@ static bool tuh_xhci_open_new_device(uint8_t rhport, uint8_t dev_addr, tusb_desc
 #else
     // If the device is running in high speed the default max packet size for the control endpoint is 64.
     // All other speeds the size is 8.
-    if (bus_info.speed == TUSB_SPEED_HIGH) {
+    if (device -> ux_device_speed == UX_HIGH_SPEED_DEVICE) {
         control_endpoint -> ux_endpoint_descriptor.wMaxPacketSize =  UX_DEFAULT_HS_MPS;
     } else {
         control_endpoint -> ux_endpoint_descriptor.wMaxPacketSize =  UX_DEFAULT_MPS;

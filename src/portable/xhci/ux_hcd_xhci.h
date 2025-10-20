@@ -316,6 +316,11 @@ extern   "C" {
  * a write with Link State Write Strobe set sets the link state.
  *
  */
+#define PORT_SPEED_MASK          0xf << 10
+#define PORT_FULL_SPEED          0x1 << 10
+#define PORT_LOW_SPEED           0x2 << 10
+#define PORT_HIGH_SPEED          0x3 << 10
+#define PORT_SUPER_SPEED         0x4 << 10
 /*
  * These bits are Read Only (RO) and should be saved and written to the
  * registers: 0, 3, 10:13, 30
