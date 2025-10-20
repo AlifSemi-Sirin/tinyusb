@@ -345,6 +345,7 @@ typedef struct UX_ENDPOINT_STRUCT {
     tusb_desc_endpoint_t ux_endpoint_descriptor;
     struct UX_DEVICE_STRUCT *ux_endpoint_device;
     struct UX_TRANSFER_STRUCT ux_endpoint_transfer_request;
+    struct UX_ENDPOINT_STRUCT *ux_endpoint_next_endpoint;
 } UX_ENDPOINT;
 
 typedef struct UX_DEVICE_STRUCT {

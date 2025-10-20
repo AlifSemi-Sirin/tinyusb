@@ -57,6 +57,7 @@ typedef struct {
     //uint8_t                 *buffer;
     uint32_t                buflen;
     tuh_xhci_slot_state_t   state;
+    UX_ENDPOINT             *first_edpt;
 } tuh_xhci_slot_t;
 
 static tuh_xhci_slot_t tuh_xhci_slots[UX_XHCI_MAX_HC_SLOTS];
@@ -116,9 +117,19 @@ static int tuh_xhci_get_slot_id_by_dev_addr(uint8_t dev_addr)
 #define UX_REGULAR_MEMORY_SIZE            (79 * ONE_KB)
 #define UX_CACHE_SAFE_MEMORY_SIZE         (20 * ONE_KB)
 
-static uint8_t dma_buf[UX_DEMO_NS_SIZE] CFG_TUSB_MEM_SECTION;
+static uint8_t dma_buf[UX_DEMO_NS_SIZE] CFG_TUSB_MEM_SECTION TU_ATTR_ALIGNED(128);
 
 extern TX_EVENT_FLAGS_GROUP CONTROL_EP_FLAG;
+
+static uint8_t _tuh_xhci_get_ep_addr(uint32_t ep_index)
+{
+    if (ep_index == 0) return 0; //Control endpoint
+
+    uint8_t ep_num = (ep_index + 1) / 2;
+    uint8_t ep_dir = (ep_index + 1) % 2;
+
+    return (ep_num | (ep_dir ? 0x80 : 0x00));
+}
 
 // optional hcd configuration, called by tuh_configure()
 bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
@@ -328,9 +339,12 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 
   tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
 
-  printf("trb_comp_code=%d, xfer_result=%d, TRB_TYPE=%u, ep_index=%d, len=%u, slot_id=%u, state=%d\r\n",
-         trb_comp_code, xfer_result, trb_type, ep_index, EVENT_TRB_LEN(event->trans_event.transfer_len), slot_id, slot->state);
+  uint8_t ep_addr = _tuh_xhci_get_ep_addr(ep_index);
 
+#ifdef DEBUG
+  printf("trb_comp_code=%d, xfer_result=%d, TRB_TYPE=%u, ep_index=%d, buflen=%u, len=%u, slot_id=%u, state=%d, ep_addr=0x%02x\r\n",
+         trb_comp_code, xfer_result, trb_type, ep_index, slot->buflen, EVENT_TRB_LEN(event->trans_event.transfer_len), slot_id, slot->state, ep_addr);
+#endif
   if (trb_type == TRB_TRANSFER)
   {
 #ifdef DEBUG
@@ -340,21 +354,28 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
       _ux_utility_event_flags_set(&CONTROL_EP_FLAG, UX_XHCI_CONTROL_EP_EVENT, TX_OR);
 #endif
 
+#ifdef DEBUG
       printf("flags=0x%lx\r\n", event->trans_event.flags);
+#endif
 
       switch (slot->state)
       {
           case TUH_XHCI_SLOT_STATE_CONTROL_DATA:
+#ifdef DEBUG
               printf("TUH_XHCI_SLOT_STATE_CONTROL_DATA\r\n");
+#endif
               //TODO: calculate proper ep_addr
-              hcd_event_xfer_complete(slot->dev_addr, ep_index | TUSB_DIR_IN_MASK, slot->buflen - EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+              hcd_event_xfer_complete(slot->dev_addr, ep_addr | TUSB_DIR_IN_MASK, slot->buflen - EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
               break;
 
+#if 0
           case TUH_XHCI_SLOT_STATE_CONTROL_ACK:
+#ifdef DEBUG
               printf("TUH_XHCI_SLOT_STATE_CONTROL_ACK\r\n");
-              hcd_event_xfer_complete(slot->dev_addr, ep_index, 0, xfer_result, true);
+#endif
+              hcd_event_xfer_complete(slot->dev_addr, ep_addr, 0, xfer_result, true);
               break;
-
+#endif
           default:
 
               //TODO: put response data into buffer provided by tinyUSB
@@ -363,7 +384,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
               //hcd_event_xfer_complete(0, 0, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
               //hcd_event_xfer_complete(hcchar_bm->dev_addr, ep_addr, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
               //FIXME: may be we shall pass original_length - EVENT_TRB_LEN(event->trans_event.transfer_len) ?
-              hcd_event_xfer_complete(slot->dev_addr, ep_index, EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
+              hcd_event_xfer_complete(slot->dev_addr, ep_addr, slot->buflen - EVENT_TRB_LEN(event->trans_event.transfer_len), xfer_result, true);
 
               break;
       }
@@ -404,9 +425,10 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
     UX_XHCI_TRB * cmd_trb = xhci->cmd_ring->dequeue;
     uint32_t cmd_type = TRB_FIELD_TO_TYPE((cmd_trb->generic.field[3]));
 
+#ifdef DEBUG
     printf("command_trb = %p, cmd_trb=%p, event->cmd_trb=0x%"PRIx64", cmd_type=%lu, status=0x%lx, flags=0x%lx\r\n",
            cmd->command_trb, cmd_trb, event->event_cmd.cmd_trb, cmd_type, event->event_cmd.status, event->event_cmd.flags);
-
+#endif
     if ((cmd_type == TRB_ADDR_DEV) && (slot->state == TUH_XHCI_SLOT_STATE_SET_ADDRESS))
     {
 #ifdef DEBUG
@@ -481,18 +503,18 @@ bool hcd_port_connect_status(uint8_t rhport) {
 // Reset USB bus on the port. Return immediately, bus reset sequence may not be complete.
 // Some port would require hcd_port_reset_end() to be invoked after 10ms to complete the reset sequence.
 void hcd_port_reset(uint8_t rhport) {
-  UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
-  uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_RESET_PORT, (void *)((ALIGN_TYPE)rhport));
-  if (port_status != UX_SUCCESS) {
-    printf("ERROR: HCD port reset has failed\r\n");
-  } else {
-    printf("DEBUG: HCD port reset success\r\n");
-  }
+    (void) rhport;
 }
 
 // Complete bus reset sequence, may be required by some controllers
 void hcd_port_reset_end(uint8_t rhport) {
-  (void) rhport;
+  UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
+  uint32_t port_status = _ux_hcd_xhci_reset_port(hcd_xhci, rhport);
+  if (port_status != UX_SUCCESS) {
+      printf("ERROR: HCD port reset has failed\r\n");
+  } else {
+      printf("DEBUG: HCD port reset success\r\n");
+  }
 }
 
 // Get port link speed
@@ -562,7 +584,7 @@ UX_DEVICE  *_ux_host_stack_new_device_get(void)
     return(device);
 }
 
-static bool tuh_xhci_open_new_device(uint8_t rhport, uint8_t dev_addr)
+static bool tuh_xhci_open_new_device(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const * ep_desc)
 {
     UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
     UX_HCD_XHCI *xhci =  (UX_HCD_XHCI *) hcd -> ux_hcd_controller_hardware;
@@ -607,6 +629,9 @@ static bool tuh_xhci_open_new_device(uint8_t rhport, uint8_t dev_addr)
     control_endpoint -> ux_endpoint_device = device;
     control_endpoint -> ux_endpoint_transfer_request.ux_transfer_request_endpoint = control_endpoint;
 
+#ifdef TODO
+    control_endpoint -> ux_endpoint_descriptor = *ep_desc;
+#else
     // If the device is running in high speed the default max packet size for the control endpoint is 64.
     // All other speeds the size is 8.
     if (bus_info.speed == TUSB_SPEED_HIGH) {
@@ -614,6 +639,7 @@ static bool tuh_xhci_open_new_device(uint8_t rhport, uint8_t dev_addr)
     } else {
         control_endpoint -> ux_endpoint_descriptor.wMaxPacketSize =  UX_DEFAULT_MPS;
     }
+#endif
 
     // Create the default control endpoint at the HCD level.
     //printf("UX_HCD_CREATE_ENDPOINT\r\n");
@@ -647,12 +673,70 @@ static bool tuh_xhci_open_new_device(uint8_t rhport, uint8_t dev_addr)
     return false;
 }
 
+static bool tuh_xhci_open_new_edpt(tuh_xhci_slot_t *slot, tusb_desc_endpoint_t const * ep_desc)
+{
+    UX_ENDPOINT *endpoint;
+    unsigned int status;
+
+    UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
+
+    /* Obtain memory for storing this new endpoint.  */
+    endpoint =  (UX_ENDPOINT *) _ux_utility_memory_allocate(UX_NO_ALIGN, UX_REGULAR_MEMORY, sizeof(UX_ENDPOINT));
+    if (endpoint == UX_NULL)
+        return(false);
+
+    /* Save the endpoint handle in the container, this is for ensuring the
+       endpoint container is not corrupted.  */
+    endpoint -> ux_endpoint =  (unsigned long) (ALIGN_TYPE) endpoint;
+
+    /* The endpoint container has a built in transfer_request.
+       The transfer_request needs to point to the endpoint as well.  */
+    endpoint -> ux_endpoint_transfer_request.ux_transfer_request_endpoint =  endpoint;
+
+    /* Save transfer packet size.  */
+    endpoint -> ux_endpoint_transfer_request.ux_transfer_request_packet_length = ep_desc->wMaxPacketSize & 0x7FF;
+
+    endpoint -> ux_endpoint_device = _created_device;
+
+    endpoint -> ux_endpoint_descriptor = *ep_desc;
+
+    /* Create this endpoint.  */
+    status = hcd -> ux_hcd_entry_function(hcd, UX_HCD_CREATE_ENDPOINT, (void *) endpoint);
+
+    if (status == UX_SUCCESS)
+    {
+        //Add endpoint to list slot->first_edpt
+        if (slot->first_edpt == NULL)
+        {
+            slot->first_edpt = endpoint;
+        }
+        else
+        {
+            UX_ENDPOINT *ep = slot->first_edpt;
+            while (ep->ux_endpoint_next_endpoint != NULL)
+            {
+                ep = ep->ux_endpoint_next_endpoint;
+            }
+
+            ep->ux_endpoint_next_endpoint = endpoint;
+        }
+    }
+    else
+    {
+        _ux_utility_memory_free(endpoint);
+    }
+
+
+    return status == UX_SUCCESS;
+}
+
 // Open an endpoint
 bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const * ep_desc)
 {
     (void) rhport;
+    uint8_t ep = ep_desc->bEndpointAddress;
 
-    printf("Called %s(%u %u %p)\r\n", __FUNCTION__, rhport, dev_addr, ep_desc);
+    printf("Called %s(%u %u ep%02x)\r\n", __FUNCTION__, rhport, dev_addr, ep);
 
     if (dev_addr == 0)
     {
@@ -660,7 +744,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
         TU_ASSERT(ep_desc->bEndpointAddress == 0);
 
         //This is new opened device, so need to create instance for it
-        return tuh_xhci_open_new_device(rhport, dev_addr);
+        return tuh_xhci_open_new_device(rhport, dev_addr, ep_desc);
     }
     else
     {
@@ -675,10 +759,17 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 
         tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
 
-        //Here opening device after SET_ADDRESS command
-        TU_ASSERT(slot->state == TUH_XHCI_SLOT_STATE_SET_ADDRESS);
+        if (ep == 0x00)
+        {
+            //Here opening device after SET_ADDRESS command
+            TU_ASSERT(slot->state == TUH_XHCI_SLOT_STATE_SET_ADDRESS);
 
-        slot->state = TUH_XHCI_SLOT_STATE_OPENED;
+            slot->state = TUH_XHCI_SLOT_STATE_OPENED;
+        }
+        else
+        {
+            return tuh_xhci_open_new_edpt(slot, ep_desc);
+        }
 
         return true;
     }
@@ -704,11 +795,11 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   UX_HCD_XHCI *xhci = hcd_xhci;
   const int32_t slot_id = xhci->slot_id;
   tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
-  const uint32_t ep_index = ((ep_addr == TUSB_DIR_IN_MASK) ? 0x00 : ep_addr);
   //FIXME: in the USBX there is one ep_index = 0 for all 3 messages in the get_descriptor request
   //       but in the tinyUSB second call is IN request with addr 0x80
 
-  printf("Called %s(%u %u 0x%x %p %u) slot_id=%ld, state=%d", __FUNCTION__, rhport, dev_addr, ep_addr, buffer, buflen, slot_id, slot->state);
+  printf("Called %s(%u %u 0x%x %p %u) slot_id=%ld, state=%d", __FUNCTION__,
+         rhport, dev_addr, ep_addr, buffer, buflen, slot_id, slot->state);
   if (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT)
   {
       for (int i = 0; i < buflen; i++)
@@ -716,9 +807,16 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
           printf(" %02x", buffer[i]);
       }
   }
-  printf("\n\r");
+  printf("\r\n");
 
-#if 1
+  if ((buffer != NULL) && ((uint32_t)buffer < 0x20004000))
+  {
+      printf("Wrong buffer address\r\n");
+  }
+
+  if (tu_edpt_number(ep_addr) == 0)
+  {
+    //Control endpoint
     switch (slot->state)
     {
         case TUH_XHCI_SLOT_STATE_CONTROL_SETUP:
@@ -766,7 +864,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
                 uint32_t ep_index = _ux_hcd_xhci_get_endpoint_index(&transfer_request->ux_transfer_request_endpoint->ux_endpoint_descriptor);
                 status = _ux_hcd_xhci_control_transfer_request(hcd_xhci, transfer_request, slot_id, ep_index);
 #endif
-
+                printf("ep0 transfer_request status = %d\r\n", status);
                 return (status == UX_SUCCESS);
             }
 
@@ -791,7 +889,39 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
             printf("Unexpected state %u\r\n", slot->state);
             return false;
     }
-#endif
+  }
+  else
+  {
+      //printf("TODO: setup transfer request\r\n");
+
+      UX_ENDPOINT   *ep;
+      unsigned int  status;
+
+      for (ep = slot->first_edpt;  ep != NULL; ep = ep->ux_endpoint_next_endpoint)
+      {
+          //printf("ep_addr %x == %x\r\n", ep_addr, ep->ux_endpoint_descriptor.bEndpointAddress);
+          if (ep_addr == ep->ux_endpoint_descriptor.bEndpointAddress)
+          {
+              break;
+          }
+      }
+
+      TU_ASSERT(ep != NULL);
+
+      UX_TRANSFER     *transfer_request =  &ep -> ux_endpoint_transfer_request;
+
+      slot->buflen = buflen;
+
+      transfer_request -> ux_transfer_request_data_pointer =      buffer;
+      transfer_request -> ux_transfer_request_requested_length =  buflen;
+      transfer_request -> ux_transfer_request_type =              tu_edpt_dir(ep_addr) == TUSB_DIR_IN ? UX_REQUEST_IN : UX_REQUEST_OUT;
+
+      status =  _ux_hcd_xhci_transfer_request(hcd_xhci, transfer_request);
+
+      printf("ep %02x transfer_request status = %d\r\n", ep_addr, status);
+
+      return (status == UX_SUCCESS);
+  }
 
 #if 0
 //TODO: transfer data
