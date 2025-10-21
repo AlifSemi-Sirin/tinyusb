@@ -193,9 +193,13 @@ bool hcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
 void hcd_int_handler(uint8_t rhport, bool in_isr) {
   (void) rhport;
   (void) in_isr;
+
+  static int cnt = 0;
+  cnt++;
+
   uint32_t port_status = hcd_xhci->op_regs->PORTSC;
 #ifdef DEBUG
-  printf("%010u Called %s(%u %u), port_status=%#x\r\n", DWT->CYCCNT, __FUNCTION__, rhport, in_isr, port_status);
+  printf("%010u Called %s(%u %u), cnt=%u, port_status=%#x speed=%u\r\n", DWT->CYCCNT, __FUNCTION__, rhport, in_isr, cnt, port_status, (port_status >> 10) & 0x0f);
 #endif
 #if 0
   printf("PS: %s%s%s%s%s%sPLS%u %sROS%u RWS%u %s%s%s%s%s%s%s%s%s%s%s%s%s%s\r\n",
@@ -240,8 +244,12 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
     if (hcd -> ux_hcd_status == UX_HCD_STATUS_OPERATIONAL)
     {
       // Call HCD for port status
+#if 1
       uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd,
               UX_HCD_GET_PORT_STATUS, (void *)((ALIGN_TYPE)rhport));
+#else
+      uint32_t port_status =  _ux_hcd_xhci_port_status_get(hcd_xhci, rhport);
+#endif
       // Check return status
       if (port_status != UX_PORT_INDEX_UNKNOWN)
       {
@@ -500,21 +508,40 @@ bool hcd_port_connect_status(uint8_t rhport) {
   return (port_status & UX_PS_CCS);
 }
 
+//#define PORT_RESET_BEGIN
+
 // Reset USB bus on the port. Return immediately, bus reset sequence may not be complete.
 // Some port would require hcd_port_reset_end() to be invoked after 10ms to complete the reset sequence.
 void hcd_port_reset(uint8_t rhport) {
+#ifdef PORT_RESET_BEGIN
+    UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
+    uint32_t port_status = _ux_hcd_xhci_reset_port(hcd_xhci, rhport);
+    if (port_status != UX_SUCCESS) {
+        printf("ERROR: HCD port reset has failed\r\n");
+    } else {
+        printf("DEBUG: HCD port reset success\r\n");
+    }
+#else
     (void) rhport;
+#endif
 }
 
 // Complete bus reset sequence, may be required by some controllers
 void hcd_port_reset_end(uint8_t rhport) {
-  UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
-  uint32_t port_status = _ux_hcd_xhci_reset_port(hcd_xhci, rhport);
-  if (port_status != UX_SUCCESS) {
-      printf("ERROR: HCD port reset has failed\r\n");
-  } else {
-      printf("DEBUG: HCD port reset success\r\n");
-  }
+#ifndef PORT_RESET_BEGIN
+    UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
+    uint32_t port_status = _ux_hcd_xhci_reset_port(hcd_xhci, rhport);
+    if (port_status != UX_SUCCESS) {
+        printf("ERROR: HCD port reset has failed\r\n");
+    } else {
+        printf("DEBUG: HCD port reset success\r\n");
+    }
+#else
+    (void) rhport;
+#endif
+
+//FIXME: tinyUSB delay is 50ms. 40 was experimentally set to support both cdc_msc_hid and file_explorer examples.
+    tusb_time_delay_ms_api(40);
 }
 
 // Get port link speed
@@ -522,16 +549,16 @@ tusb_speed_t hcd_port_speed_get(uint8_t rhport) {
   (void) rhport;
   uint32_t port_sts_ctrl = hcd_xhci->op_regs->PORTSC;
   if (DEV_LOWSPEED(port_sts_ctrl)) {
-    printf("DEBUG: low speed device\r\n");
+      printf("DEBUG: low speed device %#x\r\n", port_sts_ctrl);
     return TUSB_SPEED_LOW;
   } else if (DEV_FULLSPEED(port_sts_ctrl)) {
-    printf("DEBUG: full speed device\r\n");
+    printf("DEBUG: full speed device %#x\r\n", port_sts_ctrl);
     return TUSB_SPEED_FULL;
   } else if (DEV_HIGHSPEED(port_sts_ctrl)) {
-    printf("DEBUG: high speed device\r\n");
+    printf("DEBUG: high speed device %#x\r\n", port_sts_ctrl);
     return TUSB_SPEED_HIGH;
   } else {
-    printf("ERROR: invalid device speed (%x)\r\n", DEV_PORT_SPEED(port_sts_ctrl));
+    printf("ERROR: invalid device speed (%x) %#x\r\n", DEV_PORT_SPEED(port_sts_ctrl), port_sts_ctrl);
     return TUSB_SPEED_INVALID;
   }
 }
@@ -747,8 +774,9 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 {
     (void) rhport;
     uint8_t ep = ep_desc->bEndpointAddress;
+    uint32_t port_status = hcd_xhci->op_regs->PORTSC;
 
-    printf("Called %s(%u %u ep%02x)\r\n", __FUNCTION__, rhport, dev_addr, ep);
+    printf("Called %s(%u %u ep%02x) port_status=%#x speed=%u\r\n", __FUNCTION__, rhport, dev_addr, ep, port_status, (port_status >> 10) & 0x0f);
 
     if (dev_addr == 0)
     {
@@ -1155,3 +1183,16 @@ bool hcd_edpt_clear_stall(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr) {
 }
 
 #endif
+
+
+void __port_status_check()
+{
+    static uint32_t prev_port_status = 0;
+    uint32_t port_status = hcd_xhci->op_regs->PORTSC;
+    if (prev_port_status != port_status)
+    {
+        printf("%010u port_status=%#x speed=%u\r\n", DWT->CYCCNT, port_status, (port_status >> 10) & 0x0f);
+    }
+    prev_port_status = port_status;
+
+}
