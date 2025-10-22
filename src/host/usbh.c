@@ -533,8 +533,6 @@ bool tuh_task_event_ready(void) {
     }
     @endcode
  */
-extern void __port_status_check();
-
 void tuh_task_ext(uint32_t timeout_ms, bool in_isr) {
   (void) in_isr; // not implemented yet
 
@@ -545,8 +543,6 @@ void tuh_task_ext(uint32_t timeout_ms, bool in_isr) {
 
   // Loop until there is no more events in the queue
   while (1) {
-    __port_status_check();
-
     hcd_event_t event;
     if (!osal_queue_receive(_usbh_q, &event, timeout_ms)) { return; }
 

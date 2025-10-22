@@ -107,17 +107,6 @@ static int tuh_xhci_get_slot_id_by_dev_addr(uint8_t dev_addr)
     return -1;
 }
 
-void __port_status_check()
-{
-    static uint32_t prev_port_status = 0;
-    uint32_t port_status = hcd_xhci->op_regs->PORTSC;
-    if (prev_port_status != port_status)
-    {
-        printf("%010u %u port_status=%#x speed=%u\r\n", DWT->CYCCNT, board_millis(), port_status, (port_status >> 10) & 0x0f);
-    }
-    prev_port_status = port_status;
-}
-
 //--------------------------------------------------------------------+
 // Controller API
 //--------------------------------------------------------------------+
@@ -194,7 +183,7 @@ bool hcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
 
   ret = _ux_hcd_xhci_initialize(&hcd);
 
-  printf("%010u _ux_hcd_xhci_initialize() returned %d\r\n", DWT->CYCCNT, ret);
+  printf("%010u _ux_hcd_xhci_initialize() returned %d\r\n", board_millis(), ret);
 
   return ret == UX_SUCCESS;
 }
@@ -210,7 +199,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 
   uint32_t port_status = hcd_xhci->op_regs->PORTSC;
 #ifdef DEBUG
-  printf("%010u Called %s(%u %u), cnt=%u, port_status=%#x speed=%u\r\n", DWT->CYCCNT, __FUNCTION__, rhport, in_isr, cnt, port_status, (port_status >> 10) & 0x0f);
+  printf("%010u Called %s(%u %u), cnt=%u, port_status=%#x speed=%u\r\n", board_millis(), __FUNCTION__, rhport, in_isr, cnt, port_status, (port_status >> 10) & 0x0f);
 #endif
 #if 0
   printf("PS: %s%s%s%s%s%sPLS%u %sROS%u RWS%u %s%s%s%s%s%s%s%s%s%s%s%s%s%s\r\n",
@@ -255,12 +244,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
     if (hcd -> ux_hcd_status == UX_HCD_STATUS_OPERATIONAL)
     {
       // Call HCD for port status
-#if 1
-      uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd,
-              UX_HCD_GET_PORT_STATUS, (void *)((ALIGN_TYPE)rhport));
-#else
       uint32_t port_status =  _ux_hcd_xhci_port_status_get(hcd_xhci, rhport);
-#endif
       // Check return status
       if (port_status != UX_PORT_INDEX_UNKNOWN)
       {
@@ -514,17 +498,13 @@ uint32_t hcd_frame_number(uint8_t rhport) {
 
 // Get the current connect status of roothub port
 bool hcd_port_connect_status(uint8_t rhport) {
-  UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
-  uint32_t port_status = hcd -> ux_hcd_entry_function(hcd, UX_HCD_GET_PORT_STATUS, (void *)((ALIGN_TYPE)rhport));
-  return (port_status & UX_PS_CCS);
+  uint32_t port_sts_ctrl = hcd_xhci->op_regs->PORTSC;
+  return (port_sts_ctrl & PORT_CONNECT);
 }
-
-//#define PORT_RESET_BEGIN
 
 // Reset USB bus on the port. Return immediately, bus reset sequence may not be complete.
 // Some port would require hcd_port_reset_end() to be invoked after 10ms to complete the reset sequence.
 void hcd_port_reset(uint8_t rhport) {
-#ifdef PORT_RESET_BEGIN
     UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
     uint32_t port_status = _ux_hcd_xhci_reset_port(hcd_xhci, rhport);
     if (port_status != UX_SUCCESS) {
@@ -532,31 +512,11 @@ void hcd_port_reset(uint8_t rhport) {
     } else {
         printf("DEBUG: HCD port reset success\r\n");
     }
-#else
-#endif
-#ifndef PORT_RESET_BEGIN
-    UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
-    uint32_t port_status = _ux_hcd_xhci_reset_port(hcd_xhci, rhport);
-    if (port_status != UX_SUCCESS) {
-        printf("ERROR: HCD port reset has failed\r\n");
-    } else {
-        printf("DEBUG: HCD port reset success\r\n");
-    }
-#else
-    (void) rhport;
-#endif
+}
 
-    //FIXME: tinyUSB delay is 50ms. 40 was experimentally set to support both cdc_msc_hid and file_explorer examples.
-#if 1
-    static uint32_t prev_port_status = 0;
-    uint32_t start_time = board_millis();
-    while (board_millis() < start_time + 40)
-    {
-        __port_status_check();
-    }
-#else
-    tusb_time_delay_ms_api(40);
-#endif
+// Complete bus reset sequence, may be required by some controllers
+void hcd_port_reset_end(uint8_t rhport) {
+    (void) rhport;
 }
 
 // Get port link speed
@@ -791,7 +751,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     uint8_t ep = ep_desc->bEndpointAddress;
     uint32_t port_status = hcd_xhci->op_regs->PORTSC;
 
-    printf("Called %s(%u %u ep%02x) port_status=%#x speed=%u\r\n", __FUNCTION__, rhport, dev_addr, ep, port_status, (port_status >> 10) & 0x0f);
+    printf("%010u %s(%u %u ep%02x) port_status=%#x speed=%u\r\n", board_millis(), __FUNCTION__, rhport, dev_addr, ep, port_status, (port_status >> 10) & 0x0f);
 
     if (dev_addr == 0)
     {
@@ -836,7 +796,7 @@ bool hcd_edpt_close(uint8_t rhport, uint8_t daddr, uint8_t ep_addr) {
   (void) rhport;
   (void) daddr;
   (void) ep_addr;
-  printf("Called %s(%u %u %u)\n", __FUNCTION__, rhport, daddr, ep_addr);
+  printf("%010u %s(%u %u %u)\n", board_millis(), __FUNCTION__, rhport, daddr, ep_addr);
   return false; // TODO not implemented yet
 }
 
@@ -853,7 +813,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   //FIXME: in the USBX there is one ep_index = 0 for all 3 messages in the get_descriptor request
   //       but in the tinyUSB second call is IN request with addr 0x80
 
-  printf("Called %s(%u %u 0x%x %p %u) slot_id=%ld, state=%d", __FUNCTION__,
+  printf("%010u %s(%u %u 0x%x %p %u) slot_id=%ld, state=%d", board_millis(), __FUNCTION__,
          rhport, dev_addr, ep_addr, buffer, buflen, slot_id, slot->state);
   if (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT)
   {
@@ -1097,7 +1057,7 @@ bool hcd_edpt_abort_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr) {
   (void) dev_addr;
   (void) ep_addr;
 
-  printf("Called %s(%u %u %u)\n", __FUNCTION__, rhport, dev_addr, ep_addr);
+  printf("%010u %s(%u %u %u)\n", board_millis(), __FUNCTION__, rhport, dev_addr, ep_addr);
   return false;
 }
 
@@ -1115,7 +1075,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   bool ret = false;
   unsigned int status;
 
-  printf("Called %s(%u %u %p)", __FUNCTION__, rhport, dev_addr, setup_packet);
+  printf("%010u %s(%u %u %p)", board_millis(), __FUNCTION__, rhport, dev_addr, setup_packet);
 
   for (int i = 0; i < 8; i++)
   {
@@ -1193,7 +1153,7 @@ bool hcd_edpt_clear_stall(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr) {
   (void) dev_addr;
   (void) ep_addr;
 
-  printf("Called %s(%u %u %u)\n", __FUNCTION__, rhport, dev_addr, ep_addr);
+  printf("%010u %s(%u %u %u)\n", board_millis(), __FUNCTION__, rhport, dev_addr, ep_addr);
   return false;
 }
 
