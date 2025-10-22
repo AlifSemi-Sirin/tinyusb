@@ -533,12 +533,7 @@ void hcd_port_reset(uint8_t rhport) {
         printf("DEBUG: HCD port reset success\r\n");
     }
 #else
-    (void) rhport;
 #endif
-}
-
-// Complete bus reset sequence, may be required by some controllers
-void hcd_port_reset_end(uint8_t rhport) {
 #ifndef PORT_RESET_BEGIN
     UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
     uint32_t port_status = _ux_hcd_xhci_reset_port(hcd_xhci, rhport);
@@ -555,7 +550,7 @@ void hcd_port_reset_end(uint8_t rhport) {
 #if 1
     static uint32_t prev_port_status = 0;
     uint32_t start_time = board_millis();
-    while (board_millis() < start_time + 140)
+    while (board_millis() < start_time + 40)
     {
         __port_status_check();
     }
@@ -1203,5 +1198,3 @@ bool hcd_edpt_clear_stall(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr) {
 }
 
 #endif
-
-
