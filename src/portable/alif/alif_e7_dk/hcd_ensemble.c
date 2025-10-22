@@ -107,6 +107,17 @@ static int tuh_xhci_get_slot_id_by_dev_addr(uint8_t dev_addr)
     return -1;
 }
 
+void __port_status_check()
+{
+    static uint32_t prev_port_status = 0;
+    uint32_t port_status = hcd_xhci->op_regs->PORTSC;
+    if (prev_port_status != port_status)
+    {
+        printf("%010u %u port_status=%#x speed=%u\r\n", DWT->CYCCNT, board_millis(), port_status, (port_status >> 10) & 0x0f);
+    }
+    prev_port_status = port_status;
+}
+
 //--------------------------------------------------------------------+
 // Controller API
 //--------------------------------------------------------------------+
@@ -540,8 +551,17 @@ void hcd_port_reset_end(uint8_t rhport) {
     (void) rhport;
 #endif
 
-//FIXME: tinyUSB delay is 50ms. 40 was experimentally set to support both cdc_msc_hid and file_explorer examples.
+    //FIXME: tinyUSB delay is 50ms. 40 was experimentally set to support both cdc_msc_hid and file_explorer examples.
+#if 1
+    static uint32_t prev_port_status = 0;
+    uint32_t start_time = board_millis();
+    while (board_millis() < start_time + 140)
+    {
+        __port_status_check();
+    }
+#else
     tusb_time_delay_ms_api(40);
+#endif
 }
 
 // Get port link speed
@@ -1185,14 +1205,3 @@ bool hcd_edpt_clear_stall(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr) {
 #endif
 
 
-void __port_status_check()
-{
-    static uint32_t prev_port_status = 0;
-    uint32_t port_status = hcd_xhci->op_regs->PORTSC;
-    if (prev_port_status != port_status)
-    {
-        printf("%010u port_status=%#x speed=%u\r\n", DWT->CYCCNT, port_status, (port_status >> 10) & 0x0f);
-    }
-    prev_port_status = port_status;
-
-}
