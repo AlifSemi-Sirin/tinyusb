@@ -137,7 +137,9 @@ bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
   (void) cfg_id;
   (void) cfg_param;
 
-  printf("Called %s(%u %u %p)\n", __FUNCTION__, rhport, cfg_id, cfg_param);
+#ifdef DEBUG
+  printf("%010u %s(%u %u %p)\n", board_millis(), __FUNCTION__, rhport, cfg_id, cfg_param);
+#endif
   return true;
 }
 
@@ -148,7 +150,7 @@ bool hcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
   (void) rhport;
   (void) rh_init;
 
-  static UX_HCD hcd __attribute__((section("usb_dma_buf")));
+  static UX_HCD hcd;
   _hcd = &hcd;
   uint32_t ret;
 
@@ -182,9 +184,9 @@ bool hcd_init(uint8_t rhport, const tusb_rhport_init_t* rh_init) {
   hcd.ux_hcd_io = (void*)USB_BASE;
 
   ret = _ux_hcd_xhci_initialize(&hcd);
-
+#ifdef DEBUG
   printf("%010u _ux_hcd_xhci_initialize() returned %d\r\n", board_millis(), ret);
-
+#endif
   return ret == UX_SUCCESS;
 }
 
@@ -236,9 +238,9 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
   // Check if port status changed, handle device attach/remove event
   if (_ux_hcd_xhci_port_current_status_get(hcd_xhci, 0))
   {
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("hcd_xhci_port_status_changed\r\n");
-    #endif
+#endif
     UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
     // Is this HCD operational?
     if (hcd -> ux_hcd_status == UX_HCD_STATUS_OPERATIONAL)
@@ -488,7 +490,9 @@ void hcd_int_disable(uint8_t rhport) {
 // Get frame number (1ms)
 uint32_t hcd_frame_number(uint8_t rhport) {
   (void) rhport;
+#ifdef DEBUG
   printf("Called %s(%u)\n", __FUNCTION__, rhport);
+#endif
   return 0;
 }
 
@@ -510,7 +514,9 @@ void hcd_port_reset(uint8_t rhport) {
     if (port_status != UX_SUCCESS) {
         printf("ERROR: HCD port reset has failed\r\n");
     } else {
+#ifdef DEBUG
         printf("DEBUG: HCD port reset success\r\n");
+#endif
     }
 }
 
@@ -524,16 +530,24 @@ tusb_speed_t hcd_port_speed_get(uint8_t rhport) {
   (void) rhport;
   uint32_t port_sts_ctrl = hcd_xhci->op_regs->PORTSC;
   if (DEV_LOWSPEED(port_sts_ctrl)) {
+#ifdef DEBUG
       printf("DEBUG: low speed device %#x\r\n", port_sts_ctrl);
+#endif
     return TUSB_SPEED_LOW;
   } else if (DEV_FULLSPEED(port_sts_ctrl)) {
+#ifdef DEBUG
     printf("DEBUG: full speed device %#x\r\n", port_sts_ctrl);
+#endif
     return TUSB_SPEED_FULL;
   } else if (DEV_HIGHSPEED(port_sts_ctrl)) {
+#ifdef DEBUG
     printf("DEBUG: high speed device %#x\r\n", port_sts_ctrl);
+#endif
     return TUSB_SPEED_HIGH;
   } else {
+#ifdef DEBUG
     printf("ERROR: invalid device speed (%x) %#x\r\n", DEV_PORT_SPEED(port_sts_ctrl), port_sts_ctrl);
+#endif
     return TUSB_SPEED_INVALID;
   }
 }
@@ -542,8 +556,9 @@ tusb_speed_t hcd_port_speed_get(uint8_t rhport) {
 void hcd_device_close(uint8_t rhport, uint8_t dev_addr) {
   (void) rhport;
   (void) dev_addr;
-  printf("Called %s(%u %u)\n", __FUNCTION__, rhport, dev_addr);
-
+#ifdef DEBUG
+  printf("%010u %s(%u %u)\n", board_millis(), __FUNCTION__, rhport, dev_addr);
+#endif
   if (dev_addr > 0)
   {
       _ux_utility_memory_free(_created_device);
@@ -593,22 +608,9 @@ static bool tuh_xhci_open_new_device(uint8_t rhport, uint8_t dev_addr, tusb_desc
 
     //TODO: if this is new device, need to send TRB_ENABLE_SLOT command
     //      to allocate slot_id
-#if 0
-    // FIXME: Workaround to avoid long delay in TinyUSB after port reset
-    uint32_t port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_RESET_PORT, (void *)((ALIGN_TYPE)rhport));
-    if (port_status != UX_SUCCESS)
-        return false;
-
-    // The port reset phase was successful
-    port_status =  hcd -> ux_hcd_entry_function(hcd, UX_HCD_GET_PORT_STATUS, (void *)((ALIGN_TYPE)rhport));
-    if (port_status == UX_PORT_INDEX_UNKNOWN)
-        return false;
-    // Check if device is still connected
-    if ((port_status & UX_PS_CCS) == 0)
-        return false;
-#endif
-
+#ifdef DEBUG
     printf("_ux_host_stack_new_device_get() \r\n");
+#endif
     UX_DEVICE  *device = _ux_host_stack_new_device_get();
     if (device == UX_NULL)
         // UX_TOO_MANY_DEVICES
@@ -664,7 +666,9 @@ static bool tuh_xhci_open_new_device(uint8_t rhport, uint8_t dev_addr, tusb_desc
 
         UX_HCD_XHCI *xhci = hcd_xhci;
         const int32_t slot_id = xhci->slot_id;
+#ifdef DEBUG
         printf("Allocated slot_id=%u for new device\r\n", slot_id);
+#endif
         TU_ASSERT(slot_id < UX_XHCI_MAX_HC_SLOTS);
 
         tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
@@ -751,8 +755,9 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     uint8_t ep = ep_desc->bEndpointAddress;
     uint32_t port_status = hcd_xhci->op_regs->PORTSC;
 
+#ifdef DEBUG
     printf("%010u %s(%u %u ep%02x) port_status=%#x speed=%u\r\n", board_millis(), __FUNCTION__, rhport, dev_addr, ep, port_status, (port_status >> 10) & 0x0f);
-
+#endif
     if (dev_addr == 0)
     {
         //Normally this will be not called because only control endpoint is opened for device with address 0
@@ -770,8 +775,9 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
             return false;
         }
 
+#ifdef DEBUG
         printf("Use slot_id %d for dev_addr %u\r\n", slot_id, dev_addr);
-
+#endif
         tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
 
         if (ep == 0x00)
@@ -796,7 +802,9 @@ bool hcd_edpt_close(uint8_t rhport, uint8_t daddr, uint8_t ep_addr) {
   (void) rhport;
   (void) daddr;
   (void) ep_addr;
+#ifdef DEBUG
   printf("%010u %s(%u %u %u)\n", board_millis(), __FUNCTION__, rhport, daddr, ep_addr);
+#endif
   return false; // TODO not implemented yet
 }
 
@@ -813,6 +821,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   //FIXME: in the USBX there is one ep_index = 0 for all 3 messages in the get_descriptor request
   //       but in the tinyUSB second call is IN request with addr 0x80
 
+#ifdef DEBUG
   printf("%010u %s(%u %u 0x%x %p %u) slot_id=%ld, state=%d", board_millis(), __FUNCTION__,
          rhport, dev_addr, ep_addr, buffer, buflen, slot_id, slot->state);
   if (tu_edpt_dir(ep_addr) == TUSB_DIR_OUT)
@@ -823,6 +832,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
       }
   }
   printf("\r\n");
+#endif
 
   if ((buffer != NULL) && ((uint32_t)buffer < 0x20004000))
   {
@@ -879,7 +889,9 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
                 uint32_t ep_index = _ux_hcd_xhci_get_endpoint_index(&transfer_request->ux_transfer_request_endpoint->ux_endpoint_descriptor);
                 status = _ux_hcd_xhci_control_transfer_request(hcd_xhci, transfer_request, slot_id, ep_index);
 #endif
+#ifdef DEBUG
                 printf("ep0 transfer_request status = %d\r\n", status);
+#endif
                 return (status == UX_SUCCESS);
             }
 
@@ -933,8 +945,9 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
 
       status =  _ux_hcd_xhci_transfer_request(hcd_xhci, transfer_request);
 
+#ifdef DEBUG
       printf("ep %02x transfer_request status = %d\r\n", ep_addr, status);
-
+#endif
       return (status == UX_SUCCESS);
   }
 
@@ -1057,7 +1070,9 @@ bool hcd_edpt_abort_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr) {
   (void) dev_addr;
   (void) ep_addr;
 
+#ifdef DEBUG
   printf("%010u %s(%u %u %u)\n", board_millis(), __FUNCTION__, rhport, dev_addr, ep_addr);
+#endif
   return false;
 }
 
@@ -1075,6 +1090,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   bool ret = false;
   unsigned int status;
 
+#ifdef DEBUG
   printf("%010u %s(%u %u %p)", board_millis(), __FUNCTION__, rhport, dev_addr, setup_packet);
 
   for (int i = 0; i < 8; i++)
@@ -1082,7 +1098,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
       printf(" %02x", setup_packet[i]);
   }
   printf("\r\n");
-
+#endif
 #if 0
   ret = hcd_edpt_xfer(rhport, dev_addr, 0, (uint8_t*)(uintptr_t) setup_packet, 8);
 #endif
@@ -1099,7 +1115,9 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
       return false;
   }
 
+#ifdef DEBUG
   printf("Use slot_id %d for dev_addr %u\r\n", slot_id, dev_addr);
+#endif
 
   tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
 
@@ -1153,7 +1171,9 @@ bool hcd_edpt_clear_stall(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr) {
   (void) dev_addr;
   (void) ep_addr;
 
+#ifdef DEBUG
   printf("%010u %s(%u %u %u)\n", board_millis(), __FUNCTION__, rhport, dev_addr, ep_addr);
+#endif
   return false;
 }
 

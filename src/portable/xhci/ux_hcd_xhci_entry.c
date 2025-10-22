@@ -30,7 +30,9 @@
 
 uint32_t  _ux_hcd_xhci_entry(UX_HCD *hcd, uint32_t function, void *parameter)
 {
+#ifdef DEBUG
     printf("%010u %s(%lu)\r\n", board_millis(), __FUNCTION__, function);
+#endif
     uint32_t status;
     UX_HCD_XHCI *xhci;
     /* Check the status of the controller.  */

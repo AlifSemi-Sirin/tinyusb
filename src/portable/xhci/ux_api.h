@@ -607,7 +607,9 @@ static inline unsigned int tx_timer_activate(UX_TIMER *timer)
 
 static inline unsigned int _ux_utility_event_flags_create(UX_EVENT_FLAGS_GROUP *group_ptr, char *name)
 {
+#ifdef DEBUG
     printf("Called %s(%p '%s')\n\r", __FUNCTION__, group_ptr, name);
+#endif
     return 0;
 }
 

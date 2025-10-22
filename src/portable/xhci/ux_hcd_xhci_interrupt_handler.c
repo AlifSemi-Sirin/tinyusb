@@ -239,8 +239,10 @@ int32_t handle_transfer_event(UX_HCD_XHCI *xhci, UX_XHCI_TRANSFER_EVENT *event)
         goto err_out;
     }
 
+#ifdef DEBUG
     printf("%s(): ep_ring=%p, trb_comp_code=%u, event->transfer_len=%u\r\n", __FUNCTION__,
            ep_ring, trb_comp_code, EVENT_TRB_LEN((event->transfer_len)));
+#endif
 
     /* Some transfer events don't always point to a trb, see xhci 4.17.4 */
     if (!ep_ring)

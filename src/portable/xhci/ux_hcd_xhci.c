@@ -268,7 +268,7 @@ void _ux_hcd_xhci_ring_cmd_db(UX_HCD_XHCI *xhci)
 {
     if (!(xhci->cmd_ring_state & CMD_RING_STATE_RUNNING))
         return;
-#if 1//def DEBUG
+#ifdef DEBUG
     printf("%010u _ux_hcd_xhci_ring_cmd_db()\r\n", board_millis());
 #endif
     xhci->dba_regs->DOORBELL[0] = DB_VALUE_HOST;
@@ -293,7 +293,7 @@ void _ux_hcd_xhci_ring_ep_doorbell(
     if ((ep_state & EP_STOP_CMD_PENDING) || (ep_state & SET_DEQ_PENDING) ||
             (ep_state & EP_HALTED) || (ep_state & EP_CLEARING_TT))
         return;
-#if 1//def DEBUG
+#ifdef DEBUG
     printf("%010u _ux_hcd_xhci_ring_ep_doorbell(%u %u %u)\r\n", board_millis(), slot_id, ep_index, stream_id);
 #endif
     xhci->dba_regs->DOORBELL[slot_id] = DB_VALUE(ep_index, stream_id);
@@ -2815,7 +2815,9 @@ static int32_t _ux_hcd_xhci_setup_device(UX_HCD_XHCI *xhci, UX_DEVICE *udev,
     osal_mutex_unlock(&xhci -> ux_hcd_xhci_periodic_mutex);
     /* Wait for the command completion  */
     while(command->fCompletion);
+#ifdef DEBUG
     printf("command->status=%d\r\n", command->status);
+#endif
 
     switch (command->status){
         case COMP_COMMAND_ABORTED:

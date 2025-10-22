@@ -63,7 +63,9 @@ int32_t _ux_hcd_xhci_transfer_request(UX_HCD_XHCI *xhci, UX_TRANSFER *urb)
     ep_state = &xhci->devs[slot_id]->eps[ep_index].ep_state;
     xhci->device = device;
 
+#ifdef DEBUG
     printf("_ux_hcd_xhci_transfer_request(%lu %lu %lu)\n\r", slot_id, ep_index, urb->ux_transfer_request_requested_length);
+#endif
 
     if (xhci->devs[slot_id]->flags & VDEV_PORT_ERROR)
     {

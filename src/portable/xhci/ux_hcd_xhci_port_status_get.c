@@ -35,7 +35,9 @@ uint32_t  _ux_hcd_xhci_port_status_get(UX_HCD_XHCI *xhci, uint32_t port_index)
     uint32_t status;
     uint32_t port_status = 0;
     status = xhci->op_regs->PORTSC;
+#ifdef DEBUG
     printf("%010u port status: %#x\n", board_millis(), status);
+#endif
     /* Port Reset Status.  */
     if (status & PORT_RESET)
     {
@@ -45,7 +47,9 @@ uint32_t  _ux_hcd_xhci_port_status_get(UX_HCD_XHCI *xhci, uint32_t port_index)
     {
         _ux_hcd_xhci_clear_port_change_bit(xhci, UX_PS_PRS, port_index, status);
         status = xhci->op_regs->PORTSC;
+#ifdef DEBUG
         printf("%010u port status: %#x\n", board_millis(), status);
+#endif
     }
 
     /* Device Connection Status.bit[0]  */
@@ -57,7 +61,9 @@ uint32_t  _ux_hcd_xhci_port_status_get(UX_HCD_XHCI *xhci, uint32_t port_index)
     {
         _ux_hcd_xhci_clear_port_change_bit(xhci, UX_PS_CCS, port_index, status);
         status = xhci->op_regs->PORTSC;
+#ifdef DEBUG
         printf("%010u port status: %#x\n", board_millis(), status);
+#endif
     }
     /* Port Enable Status.  */
     if (status & PORT_PE)

@@ -195,8 +195,8 @@ UX_XHCI_RING* _ux_hcd_xhci_ring_alloc(UX_HCD_XHCI *xhci, uint32_t num_segs, uint
     {
 #ifdef DEBUG
         printf("memory allocation failed for ring \n");
-#endif
         printf("%s() returned NULL\r\n", __FUNCTION__);
+#endif
         return NULL;
     }
     if (num_segs == 0)
@@ -217,12 +217,16 @@ UX_XHCI_RING* _ux_hcd_xhci_ring_alloc(UX_HCD_XHCI *xhci, uint32_t num_segs, uint
         ring->last_seg->trbs[TRBS_PER_SEGMENT - 1].link.control |= (LINK_TOGGLE);
     }
     _ux_hcd_xhci_initialize_ring_info(ring, cycle_state);
+#ifdef DEBUG
     printf("%s() returned %p\r\n", __FUNCTION__, ring);
+#endif
     return ring;
 
 fail:
     _ux_utility_memory_free(ring);
+#ifdef DEBUG
     printf("%s() returned NULL\r\n", __FUNCTION__);
+#endif
     return NULL;
 }
 
