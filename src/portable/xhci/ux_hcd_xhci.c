@@ -1146,14 +1146,14 @@ void handle_cmd_completion(UX_HCD_XHCI *xhci, UX_XHCI_EVENT_CMD *event)
         case TRB_DISABLE_SLOT:
 #ifdef DEBUG
             printf("TRB_DISABLE_SLOT\r\n");
-            _ux_hcd_xhci_handle_cmd_disable_slot(xhci, slot_id);
 #endif
+            _ux_hcd_xhci_handle_cmd_disable_slot(xhci, slot_id);
             break;
         case TRB_CONFIG_EP:
 #ifdef DEBUG
             printf("TRB_CONFIG_EP\r\n");
-            _ux_hcd_xhci_handle_cmd_config_ep(xhci, slot_id, event, cmd_comp_code);
 #endif
+            _ux_hcd_xhci_handle_cmd_config_ep(xhci, slot_id, event, cmd_comp_code);
             break;
         case TRB_EVAL_CONTEXT:
 #ifdef DEBUG
@@ -1629,7 +1629,7 @@ void queue_trb(
     trb->field[2] = trb_info->size;
     trb->field[3] = trb_info->cntrl_field;
 
-#ifdef DEBUG
+#if 0//def DEBUG
     printf("Called %s(0x%lx, 0x%lx, %lu, 0x%lx)", __FUNCTION__, trb->field[0], trb->field[1], trb->field[2], trb->field[3]);
     uint8_t *buf;
     if ((trb_info->cntrl_field & TRB_IDT) && (trb_info->size <= 8))
@@ -2426,7 +2426,7 @@ static int32_t _ux_hcd_xhci_evaluate_context_result(UX_HCD_XHCI *xhci, UX_DEVICE
             break;
         case COMP_SUCCESS:
 #ifdef DEBUG
-            printf("Successful evaluate context command");
+            printf("Successful evaluate context command\n");
 #endif
             ret = 0;
             break;

@@ -34,6 +34,8 @@
 
 #include "clk.h"
 #include "power.h"
+#include "bsp/board_api.h"
+
 
 #ifndef MIN
     #define MIN(a,b) (((a) < (b)) ? (a) : (b))
@@ -61,6 +63,8 @@ typedef struct {
 } tuh_xhci_slot_t;
 
 static tuh_xhci_slot_t tuh_xhci_slots[UX_XHCI_MAX_HC_SLOTS];
+static bool tuh_xhci_enum_timer_active = false;
+static uint32_t tuh_xhci_enum_timer_value = 0;
 
 #if 1
 // USB Registers Access Types
@@ -105,6 +109,54 @@ static int tuh_xhci_get_slot_id_by_dev_addr(uint8_t dev_addr)
     }
 
     return -1;
+}
+
+static void tuh_xhci_enum_timer_activate(bool set)
+{
+    if (set)
+    {
+        tuh_xhci_enum_timer_value = board_millis();
+    }
+
+    tuh_xhci_enum_timer_active = set;
+}
+
+static void tuh_xhci_enum_timer_check(uint8_t rhport)
+{
+    if (tuh_xhci_enum_timer_active)
+    {
+        uint32_t cur_ms = board_millis();
+        if (cur_ms > tuh_xhci_enum_timer_value + 20)
+        {
+            tuh_xhci_enum_timer_value = cur_ms;
+//            printf("%010u %s(%u)\n", board_millis(), __FUNCTION__, cur_ms);
+            // Check if port status changed, handle device attach/remove event
+            if (_ux_hcd_xhci_port_current_status_get(hcd_xhci, 0))
+            {
+#ifdef DEBUG
+                printf("hcd_xhci_port_status_changed\r\n");
+#endif
+                UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
+                // Is this HCD operational?
+                if (hcd -> ux_hcd_status == UX_HCD_STATUS_OPERATIONAL)
+                {
+                    // Call HCD for port status
+                    uint32_t port_status =  _ux_hcd_xhci_port_status_get(hcd_xhci, rhport);
+                    // Check return status
+                    if (port_status != UX_PORT_INDEX_UNKNOWN)
+                    {
+                        // The port_status value is valid and will tell us if there is
+                        // a device attached\detached on the downstream port.
+                        if (port_status & UX_PS_CCS) {
+                            hcd_event_device_attach(rhport, true);
+                        } else {
+                            hcd_event_device_remove(rhport, true);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 //--------------------------------------------------------------------+
@@ -234,6 +286,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 
   UX_HCD_XHCI *xhci = hcd_xhci;
 
+#if 0
   //FIXME:  as alternative we can check for (trb_type == TRB_PORT_STATUS)
   // Check if port status changed, handle device attach/remove event
   if (_ux_hcd_xhci_port_current_status_get(hcd_xhci, 0))
@@ -260,6 +313,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
       }
     }
   }
+#endif
 
 #if 1
   UX_XHCI_TRB *event_ring_deq;
@@ -340,7 +394,7 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 
   TU_ASSERT(slot_id < UX_XHCI_MAX_HC_SLOTS,);
   //FIXME: force assert to prevent board crash later
-  TU_ASSERT(xfer_result == XFER_RESULT_SUCCESS,);
+//  TU_ASSERT(xfer_result == XFER_RESULT_SUCCESS,);
 
   tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
 
@@ -350,7 +404,14 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
   printf("trb_comp_code=%d, xfer_result=%d, TRB_TYPE=%u, ep_index=%d, buflen=%u, len=%u, slot_id=%u, state=%d, ep_addr=0x%02x\r\n",
          trb_comp_code, xfer_result, trb_type, ep_index, slot->buflen, EVENT_TRB_LEN(event->trans_event.transfer_len), slot_id, slot->state, ep_addr);
 #endif
-  if (trb_type == TRB_TRANSFER)
+  if (trb_type == TRB_PORT_STATUS)
+  {
+#ifdef DEBUG
+      printf("%s() TRB_TRANSFER \r\n", __FUNCTION__);
+#endif
+    tuh_xhci_enum_timer_activate(true);
+  }
+  else if (trb_type == TRB_TRANSFER)
   {
 #ifdef DEBUG
       printf("%s() TRB_TRANSFER \r\n", __FUNCTION__);
@@ -475,15 +536,16 @@ void hcd_int_handler(uint8_t rhport, bool in_isr) {
 
 // Enable USB interrupt
 void hcd_int_enable (uint8_t rhport) {
-  (void) rhport;
-//    printf("Called %s(%u)\n", __FUNCTION__, rhport);
+    (void) rhport;
+//    printf("%010u %s(%u)\n", board_millis(), __FUNCTION__, rhport);
+    tuh_xhci_enum_timer_check(rhport);
     NVIC_EnableIRQ(USB_IRQ_IRQn);
 }
 
 // Disable USB interrupt
 void hcd_int_disable(uint8_t rhport) {
-  (void) rhport;
-//  printf("Called %s(%u)\n", __FUNCTION__, rhport);
+    (void) rhport;
+//    printf("%010u %s(%u)\n", board_millis(), __FUNCTION__, rhport);
     NVIC_DisableIRQ(USB_IRQ_IRQn);
 }
 
@@ -554,16 +616,37 @@ tusb_speed_t hcd_port_speed_get(uint8_t rhport) {
 
 // HCD closes all opened endpoints belong to this device
 void hcd_device_close(uint8_t rhport, uint8_t dev_addr) {
-  (void) rhport;
-  (void) dev_addr;
+    (void) rhport;
+    UX_HCD * hcd = hcd_xhci -> ux_hcd_xhci_hcd_owner;
+    UX_DEVICE       *device = _created_device;
 #ifdef DEBUG
-  printf("%010u %s(%u %u)\n", board_millis(), __FUNCTION__, rhport, dev_addr);
+    printf("%010u %s(%u %u)\n", board_millis(), __FUNCTION__, rhport, dev_addr);
 #endif
-  if (dev_addr > 0)
-  {
-      _ux_utility_memory_free(_created_device);
-      _created_device = NULL;
-  }
+    if (dev_addr > 0)
+    {
+        int slot_id = tuh_xhci_get_slot_id_by_dev_addr(dev_addr);
+        if (slot_id < 0)
+        {
+            printf("Unable to find slot_id for dev_addr %u\r\n", dev_addr);
+        }
+
+        tuh_xhci_slot_t *slot = &tuh_xhci_slots[slot_id];
+        UX_ENDPOINT   *ep = slot->first_edpt;
+
+        while (ep != NULL)
+        {
+            void *ep_ptr = ep;
+            ep = ep->ux_endpoint_next_endpoint;
+            _ux_utility_memory_free(ep_ptr);
+        }
+
+        hcd -> ux_hcd_entry_function(hcd, UX_HCD_DESTROY_ENDPOINT, (void *) &device -> ux_device_control_endpoint);
+
+        memset(slot, 0, sizeof(*slot));
+
+        _ux_utility_memory_free(_created_device);
+        _created_device = NULL;
+    }
 }
 
 //--------------------------------------------------------------------+
