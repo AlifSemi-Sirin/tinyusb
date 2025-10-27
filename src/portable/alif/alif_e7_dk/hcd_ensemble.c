@@ -169,7 +169,7 @@ static void tuh_xhci_enum_timer_check(uint8_t rhport)
 #define UX_REGULAR_MEMORY_SIZE            (79 * ONE_KB)
 #define UX_CACHE_SAFE_MEMORY_SIZE         (20 * ONE_KB)
 
-static uint8_t dma_buf[UX_DEMO_NS_SIZE] CFG_TUSB_MEM_SECTION TU_ATTR_ALIGNED(128);
+static uint8_t dma_buf[UX_DEMO_NS_SIZE] CFG_TUH_MEM_SECTION TU_ATTR_ALIGNED(128);
 
 extern TX_EVENT_FLAGS_GROUP CONTROL_EP_FLAG;
 
