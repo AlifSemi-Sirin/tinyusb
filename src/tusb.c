@@ -136,7 +136,7 @@ void tusb_int_handler(uint8_t rhport, bool in_isr) {
   #endif
 
 #ifdef DEBUG
-  printf("%010u %s() end\r\n", board_millis(), __FUNCTION__);
+  printf("%010u %s() end\r\n", board_millis(), "hcd_int_handler");
 #endif
 }
 
