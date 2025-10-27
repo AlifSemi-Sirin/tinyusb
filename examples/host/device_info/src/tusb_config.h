@@ -49,7 +49,7 @@
 #endif
 
 #ifndef CFG_TUSB_DEBUG
-#define CFG_TUSB_DEBUG        3
+#define CFG_TUSB_DEBUG        0
 #endif
 
 /* USB DMA on some MCUs can only access a specific SRAM region with restriction on alignment.

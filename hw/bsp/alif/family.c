@@ -39,9 +39,6 @@ void board_init(void) {
     SysTick_Config(SystemCoreClock / 1000);
 
     tracelib_init(NULL, tracelib_cb);
-
-    // DEBUG: Empty line at the log beginnig
-    printf("\n\r");
 #endif
 
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR
@@ -185,18 +182,15 @@ uint32_t board_millis(void) {
 }
 #endif
 
-uint32_t USB_IRQHandler_cnt = 0;
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
 void USB_IRQHandler(void);
 void USB_IRQHandler(void) {
-    USB_IRQHandler_cnt++;
     tusb_int_handler(0, true);
 }
 #endif
 
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR
 void USBD_IRQHandler(void) {
-    USB_IRQHandler_cnt++;
     tud_int_handler(0);
 }
 #endif
