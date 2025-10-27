@@ -24,6 +24,12 @@ static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios)
 /**
  * @brief Board init: configure LED and button pins
  */
+
+void tracelib_cb(uint32_t event)
+{
+    //This CB required to make receive_str() function ublocking
+}
+
 void board_init(void) {
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
       BOARD_Pinmux_Init();
@@ -31,8 +37,8 @@ void board_init(void) {
 
     // 1ms tick timer
     SysTick_Config(SystemCoreClock / 1000);
-    
-    tracelib_init(NULL, NULL);
+
+    tracelib_init(NULL, tracelib_cb);
 #endif
 
 #if CFG_TUSB_OS == OPT_OS_ZEPHYR
@@ -59,7 +65,7 @@ void board_led_write(bool state) {
     if (device_is_ready(led.port)) {
         gpio_pin_set(led.port, led.pin, state ? 1 : 0);
     }
-#endif  
+#endif
 }
 
 /**
@@ -80,7 +86,7 @@ uint32_t board_button_read(void) {
     int val = gpio_pin_get_dt(&button);
 
     return val == 0;    // Pin pulled low when pressed
-#endif  
+#endif
 }
 
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
@@ -89,9 +95,8 @@ uint32_t board_button_read(void) {
  * @brief UART read handler
  */
 int board_uart_read(uint8_t* buf, int len) {
-    // NOTE: stdin functionality has not been implemented
-    (void) buf, (void) len;
-    return 0;
+    int ret = receive_str((char *) buf, len);
+    return (ret == ARM_DRIVER_OK) ? len : 0;
 }
 
 /**
@@ -167,11 +172,10 @@ uint32_t board_millis(void) {
 }
 #endif
 
-
 #if CFG_TUSB_OS == OPT_OS_NONE || CFG_TUSB_OS == OPT_OS_FREERTOS
 void USB_IRQHandler(void);
 void USB_IRQHandler(void) {
-    dcd_int_handler(0);
+    tusb_int_handler(0, true);
 }
 #endif
 
