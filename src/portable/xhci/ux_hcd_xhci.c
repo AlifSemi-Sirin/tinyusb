@@ -1629,7 +1629,7 @@ void queue_trb(
     trb->field[2] = trb_info->size;
     trb->field[3] = trb_info->cntrl_field;
 
-#if 0//def DEBUG
+#ifdef DEBUG
     printf("Called %s(0x%lx, 0x%lx, %lu, 0x%lx)", __FUNCTION__, trb->field[0], trb->field[1], trb->field[2], trb->field[3]);
     uint8_t *buf;
     if ((trb_info->cntrl_field & TRB_IDT) && (trb_info->size <= 8))
